@@ -1,0 +1,7 @@
+
+# Ignore files larger than 10MB
+# This requires developers to monitor file size before adding to version control.
+
+# Ignore all files in the checkpoint directory
+checkpoint/
+

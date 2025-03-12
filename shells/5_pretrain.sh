@@ -1,0 +1,11 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 --rdzv-backend=c10d \
+    --rdzv-endpoint=localhost:29500  --nnodes=1 pretrain.py --world_size=4 \
+--learning_rate=0.00001 --batch_size=256   \
+--dataset_name=AffectNet --dataset_path=../data/AffectNet7 \
+--wandb_token=../wandb.txt --kp_rpe_cfg_path=checkpoint/adaface_vit_base_kprpe_webface12m \
+--n_epochs=50 \
+--ckpt=checkpoint/kprpeDropout20_webface12mFlipFalseLearnlow/ \
+--instance_ada_loss=True \
+--instance_alpha=0.5 \
+--instance_adaloss_ckpt=checkpoint/kprpeDropout20_webface12mAffectNetFineTuneAugmented \
+--name=12mClassInstanceOnly

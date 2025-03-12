@@ -1,0 +1,19 @@
+torch
+torchvision
+torchaudio
+--extra-index-url https://download.pytorch.org/whl/cu126
+tqdm
+matplotlib
+safetensors
+timm
+transformers
+huggingface
+huggingface_hub
+easydict
+wandb
+catalyst
+pandas
+omegaconf
+opencv-python
+scikit-image
+opencv-contrib-python
