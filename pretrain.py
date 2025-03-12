@@ -1,4 +1,4 @@
-from dataset import raf_for_kp, FER
+from dataset import FER
 from models import kprpe_fer, load_kprpe_finetuned
 from torch.utils.data import DataLoader
 from tqdm import tqdm
