@@ -7,4 +7,4 @@ CUDA_VISIBLE_DEVICES=0,1 /pscratch/sd/s/sgkim/hcir/condaenvs/cv2/bin/torchrun --
 --cos_margin_loss=True --margin=0.3 \
 --name only_margin_high --quality_model_path=checkpoint/quality \
 --instance_adaloss_ckpt=checkpoint/vanilla12m \
---proportion_alpha=0 > log1.txt 2>&1 &
+--proportion_alpha=0
