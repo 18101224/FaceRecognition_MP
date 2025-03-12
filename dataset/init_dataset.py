@@ -1,5 +1,5 @@
 
-from .fer import FER
+from fer import FER
 from argparse import Namespace
 
 if __name__ == '__main__':
