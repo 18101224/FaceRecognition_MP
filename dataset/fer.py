@@ -10,7 +10,7 @@ import sys
 sys.path.extend('..')
 from utils import init_quality_model, by_ml
 from copy import deepcopy
-from .kp_rpe import *
+from kp_rpe import *
 import numpy as np
 from tqdm import tqdm
 import os
