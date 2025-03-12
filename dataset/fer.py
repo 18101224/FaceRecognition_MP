@@ -4,7 +4,6 @@ from glob import glob
 from PIL import Image
 import torch
 from torch import nn
-from sampler import ImbalancedDatasetSampler
 from torch.utils.data import DataLoader, DistributedSampler
 import sys
 sys.path.extend('..')
@@ -22,20 +21,7 @@ def exc_label(i):
     # Affect to RAF label
     label = [6,3,4,0,1,2,5]
     return label[i]
-def get_data(args):
-    train_set = raf(args.data_path, train=True)
-    valid_set = raf(args.data_path, train=False)
-    train_sampler = ImbalancedDatasetSampler(train_set,labels=train_set.get_label())
-    valid_sampler = None
-    bs = args.batch_size
-    if args.world_size > 1 :
-        from catalyst.data import DistributedSamplerWrapper
-        train_sampler = DistributedSamplerWrapper(sampler=train_sampler, shuffle=True)
-        valid_sampler = DistributedSampler(valid_set)
-        bs = int(bs//args.world_size)
-    train_loader = DataLoader(train_set,batch_size=bs,shuffle=False,sampler=train_sampler)
-    valid_loader = DataLoader(valid_set,batch_size=bs,shuffle=False,sampler=valid_sampler)
-    return train_set, valid_set, train_loader, valid_loader, train_sampler
+
 
 
 class FER(Dataset):
