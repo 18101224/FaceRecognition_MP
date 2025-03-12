@@ -7,7 +7,6 @@ matplotlib
 safetensors
 timm
 transformers
-huggingface
 huggingface_hub
 easydict
 wandb
