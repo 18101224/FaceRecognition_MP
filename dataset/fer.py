@@ -4,7 +4,7 @@ from glob import glob
 from PIL import Image
 import torch
 from torch import nn
-from .sampler import ImbalancedDatasetSampler
+from sampler import ImbalancedDatasetSampler
 from torch.utils.data import DataLoader, DistributedSampler
 import sys
 sys.path.extend('..')
