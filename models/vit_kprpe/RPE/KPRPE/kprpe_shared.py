@@ -4,11 +4,11 @@ import torch
 import torch.nn as nn
 from .dist import _rp_2d_cross_cols, _rp_2d_cross_rows, _rp_2d_euclidean, _rp_2d_product, _rp_2d_quant
 
-try:
-    from ..rpe_ops.rpe_index import RPEIndexFunction
-except Exception as e:
-    print('Failed to import cuda/cpp RPEIndexFunction')
-    RPEIndexFunction = None
+# try:
+from ..rpe_ops.rpe_index import RPEIndexFunction
+# except Exception as e:
+#     print('Failed to import cuda/cpp RPEIndexFunction')
+#     RPEIndexFunction = None
 
 
 
