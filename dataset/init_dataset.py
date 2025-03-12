@@ -1,4 +1,6 @@
-from . import FER
+import sys
+sys.path.append('..')
+from dataset import FER
 from argparse import Namespace
 
 if __name__ == '__main__':
