@@ -95,8 +95,8 @@ class PreTrainer :
                 gen_model.eval()
             self.gen_model = gen_model.to(self.device)
 
-        if args.class_ada_loss :
-            self.class_ada_loss = Proportion_loss(self.train_set.labels,args.proportion_alpha,self.device)
+
+        self.class_ada_loss = Proportion_loss(self.train_set.labels,args.proportion_alpha,self.device)
 
         if args.world_size > 1 :
             self.model = DDP(self.model,device_ids=[args.local_rank],find_unused_parameters=True)
