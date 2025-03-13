@@ -8,7 +8,7 @@
 #--proportion_alpha=0
 
 CUDA_VISIBLE_DEVICES=2 python3 pretrain.py --world_size=1 \
---learning_rate=0.000001 --batch_size=128 \
+--learning_rate=0.000001 --batch_size=256 \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet7 \
 --wandb_token=../wandb.txt --kp_rpe_cfg_path=checkpoint/adaface_vit_base_kprpe_webface12m \
 --n_epochs=200  \
@@ -17,7 +17,7 @@ CUDA_VISIBLE_DEVICES=2 python3 pretrain.py --world_size=1 \
 --proportion_alpha=0 &
 
 CUDA_VISIBLE_DEVICES=3 python3 pretrain.py --world_size=1 \
---learning_rate=0.000005 --batch_size=128 \
+--learning_rate=0.000005 --batch_size=256 \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet7 \
 --wandb_token=../wandb.txt --kp_rpe_cfg_path=checkpoint/adaface_vit_base_kprpe_webface12m \
 --n_epochs=200  \
