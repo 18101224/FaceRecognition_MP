@@ -8,7 +8,7 @@ from tqdm import tqdm
 from utils import plot_confusion
 from argparse import ArgumentParser, Namespace
 from analysis import plot_weight_tsne,analyze_weight_matrix
-
+from torch import nn
 def get_args():
     args = ArgumentParser()
     args.add_argument('--name')
@@ -34,6 +34,7 @@ if __name__ == '__main__':
     model.load_from_state_dict(ckpt_path)
     model = model.to(device)
     model.train()
-    weight = model.classifier.kernel.transpose(-1,-2)
+    weight = model.classifier.kernel.transpose(-1,-2) # n_classes, dims
+    weight = nn.functional.normalize(weight,dim=0)
 
     plot_weight_tsne(weight,save_path=f'{args.name}.png')
