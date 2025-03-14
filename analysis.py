@@ -1,0 +1,37 @@
+from models import kprpe_fer, load_ckpt_kprep
+from dataset import FER
+from torch.utils.data import DataLoader
+import torch
+from aligners import get_aligner
+from utils import get_acc
+from tqdm import tqdm
+from utils import plot_confusion
+from argparse import ArgumentParser, Namespace
+from analysis import plot_weight_tsne,analyze_weight_matrix
+
+def get_args():
+    args = ArgumentParser()
+    args.add_argument('--name')
+    return args.parse_args()
+
+
+
+if __name__ == '__main__':
+    args = get_args()
+    # data_arg = {'dataset_path':'data/AffectNet7', 'world_size':1}
+    # data_arg = Namespace(**data_arg)
+    # dataset = FER(data_arg,'checkpoint/quality',train=False)
+    # loader = DataLoader(dataset,shuffle=False,batch_size=12)
+    config_path = 'checkpoint/adaface_vit_base_kprpe_webface4m'
+    model = kprpe_fer(config_path)
+    device = torch.device('cuda')
+
+
+    # change here
+    ckpt_path = 'checkpoint/only_margin_low'
+    model.load_from_state_dict(ckpt_path)
+    model = model.to(device)
+    model.train()
+    weight = model.classifier.kernel
+
+    plot_weight_tsne(weight,save_path=f'{args.name}.png')
