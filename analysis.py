@@ -34,12 +34,8 @@ if __name__ == '__main__':
     model.load_from_state_dict(ckpt_path)
     model = model.to(device)
     model.train()
-    weight = model.classifier.kernel.transpose(-1,-2)
-    print('weight shape: ',weight.shape)
-    normed_weight = nn.functional.normalize(weight,dim=0)
-    print(torch.sum(normed_weight**2,dim=0))
-    print('normed_weight norm',normed_weight.norm(p=2,dim=0))
-    weight = model.classifier.kernel.transpose(-1,-2) # n_classes, dims
-    weight = nn.functional.normalize(weight,dim=0)
+    weight = model.classifier.kernel.transpose(-1,-2) # num_classes, dims
+    normed_weight = nn.functional.normalize(weight,dim=1) #
 
-    plot_weight_tsne(weight,save_path=f'{args.name}.png')
+
+    plot_weight_tsne(normed_weight,save_path=f'{args.name}.png')
