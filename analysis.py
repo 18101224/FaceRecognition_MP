@@ -34,6 +34,10 @@ if __name__ == '__main__':
     model.load_from_state_dict(ckpt_path)
     model = model.to(device)
     model.train()
+    weight = model.classifier.kernel.transpose(-1,-2)
+    print('weight shape: ',weight.shape)
+    normed_weight = nn.functional.normalize(weight,dim=0)
+    print('normed_weight norm',normed_weight.norm(p=2,dim=0))
     weight = model.classifier.kernel.transpose(-1,-2) # n_classes, dims
     weight = nn.functional.normalize(weight,dim=0)
 
