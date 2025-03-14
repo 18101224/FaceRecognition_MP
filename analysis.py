@@ -22,13 +22,15 @@ if __name__ == '__main__':
     # data_arg = Namespace(**data_arg)
     # dataset = FER(data_arg,'checkpoint/quality',train=False)
     # loader = DataLoader(dataset,shuffle=False,batch_size=12)
+    ckpt_path = 'checkpoint/only_margin_low'
+
     config_path = 'checkpoint/adaface_vit_base_kprpe_webface4m'
-    model = kprpe_fer(config_path)
+    model = kprpe_fer(ckpt_path)
     device = torch.device('cuda')
 
 
     # change here
-    ckpt_path = 'checkpoint/only_margin_low'
+
     model.load_from_state_dict(ckpt_path)
     model = model.to(device)
     model.train()
