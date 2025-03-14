@@ -30,12 +30,14 @@ def plot_weight_tsne(weights, save_path=None):
                          cmap='viridis', 
                          s=100)
     
-    # Add class labels
+    # Add class labels with index
     for i in range(weights.shape[0]):
-        plt.annotate(f'Class {i}', 
+        plt.annotate(f'{i}', # Changed to just show index number
                     (weights_tsne[i, 0], weights_tsne[i, 1]),
                     xytext=(5, 5), 
-                    textcoords='offset points')
+                    textcoords='offset points',
+                    fontsize=12,
+                    fontweight='bold')
     
     # Add colorbar
     plt.colorbar(scatter, label='Class Index')
@@ -60,7 +62,6 @@ def plot_weight_tsne(weights, save_path=None):
     
     # Save if path provided
     if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path)
         plt.close()
     else:
@@ -102,15 +103,3 @@ def analyze_weight_matrix(weights):
     print(f"Min: {max_sim.min().item():.4f}")
     print(f"Max: {max_sim.max().item():.4f}")
 
-if __name__ == "__main__":
-    # Example usage
-    n_classes = 7
-    embed_dim = 512
-    
-    # Create random weight matrix for testing
-    weights = torch.randn(n_classes, embed_dim)
-    weights = torch.nn.functional.normalize(weights, dim=1)  # Normalize for testing
-    
-    # Analyze and plot
-    analyze_weight_matrix(weights)
-    plot_weight_tsne(weights, save_path='analysis_results/test_tsne.png') 
