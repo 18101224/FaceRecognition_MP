@@ -34,6 +34,6 @@ if __name__ == '__main__':
     model.load_from_state_dict(ckpt_path)
     model = model.to(device)
     model.train()
-    weight = model.classifier.kernel
+    weight = model.classifier.kernel.transpose(-1,-2)
 
     plot_weight_tsne(weight,save_path=f'{args.name}.png')
