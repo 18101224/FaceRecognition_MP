@@ -25,7 +25,7 @@ if __name__ == '__main__':
     ckpt_path = 'checkpoint/only_margin_low'
 
     config_path = 'checkpoint/adaface_vit_base_kprpe_webface4m'
-    model = kprpe_fer(ckpt_path)
+    model = kprpe_fer(ckpt_path,cos=True)
     device = torch.device('cuda')
 
 
