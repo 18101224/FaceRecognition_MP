@@ -1,6 +1,6 @@
 from .class_adaloss import *
 from .instance_adaloss import *
-
+from .label_noise import get_label_noise, including_margin
 
 class Proportion_loss:
     def __init__(self, labels, alpha,device):

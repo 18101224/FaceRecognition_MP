@@ -7,8 +7,9 @@ from utils import get_acc
 from tqdm import tqdm
 from utils import plot_confusion
 from argparse import ArgumentParser, Namespace
-from analysis import plot_weight_tsne,analyze_weight_matrix
+from analysis import plot_weight_tsne, plot_angular_distribution, plot_sphere_distribution, plot_angle_preservation
 from torch import nn
+
 def get_args():
     args = ArgumentParser()
     args.add_argument('--name')
@@ -35,7 +36,11 @@ if __name__ == '__main__':
     model = model.to(device)
     model.train()
     weight = model.classifier.kernel.transpose(-1,-2) # num_classes, dims
-    normed_weight = nn.functional.normalize(weight,dim=1) #
+    normed_weight = nn.functional.normalize(weight,dim=1).cpu().detach().numpy() #
 
+    positions = plot_sphere_distribution(weights, save_path='sphere_viz.png')
 
-    plot_weight_tsne(normed_weight,save_path=f'{args.name}.png')
+    # Optionally, check how well angles are preserved
+    plot_angle_preservation(weights, positions)
+
+    plot_angular_distribution(normed_weight,save_path=f'{args.name}.png')

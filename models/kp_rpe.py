@@ -50,7 +50,7 @@ class CosClassifier(Classifier):
         weight = nn.functional.normalize(weight, p=2, dim=1)
         self.kernel = nn.Parameter(
             weight.transpose(-1, -2), requires_grad=True
-        )
+        ) # dim, num_class
 
     @torch.no_grad()
     def get_margin(self):
@@ -68,7 +68,7 @@ class CosClassifier(Classifier):
             x = norm(x)
             x = act(x)
         x = nn.functional.normalize(x, p=2, dim=1)
-        kernel = nn.functional.normalize(self.kernel, dim=1, p=2)
+        kernel = nn.functional.normalize(self.kernel, dim=0, p=2) # dim, num_class
         cos = x @ kernel  # bs, num_classes
         margins = self.get_margin()
         return margins, cos

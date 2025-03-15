@@ -25,10 +25,3 @@ def get_grad_norm_L(loss,model,ddp):
     )
     norm = torch.sqrt(sum(g.norm()**2 for g in grad))
     return norm
-
-def get_label_noise(pred,label):
-    val,y_hat = torch.max(pred,dim=-1)
-    true_logit = pred[torch.arange(pred.shape[0]),label]
-    label_noise = true_logit*((pred.shape[1]-1)/pred.shape[1]) - (1/pred.shape[1])*torch.sum(pred,dim=-1,keepdim=False)
-    sign = (y_hat == label).float()
-    return sign*label_noise

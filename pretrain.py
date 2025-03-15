@@ -2,7 +2,7 @@ from dataset import FER
 from models import kprpe_fer, load_kprpe_finetuned
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from utils import get_acc,sync, get_label_noise
+from utils import get_acc,sync
 from utils.fer_logger import init_wandb
 from argparse import ArgumentParser
 from torch.distributed import init_process_group
@@ -13,7 +13,8 @@ from kp import get_aligner
 from opt import *
 import wandb,os,pickle,aligners
 from copy import deepcopy
-from Loss import *
+from Loss import including_margin, get_label_noise
+from torch import nn
 
 def get_args():
     args = ArgumentParser()
@@ -112,33 +113,14 @@ class PreTrainer :
     def run_train_forward(self,img,label,ldmk):
         _, pred, margin = self.model(img, ldmk)
         coef = 1
-        with torch.no_grad():
-            if self.args.class_ada_loss:
-                a = self.class_ada_loss.get_proportion_weights(label)
-                coef = coef * a
-            if self.args.instance_ada_loss:
-                _, gen_pred = self.gen_model(img, ldmk)
-                a = compute_instance_adaloss(gen_pred, pred, alpha=self.args.instance_alpha)
-                coef = coef * a
-            #if self.args.class_quality_loss:
-            #    a = 1 - self.args.quality_beta * c_q.to(self.device)
-            #    coef = coef * a
-            if self.args.cos_margin_loss:
-                if not self.args.instance_ada_loss:
-                    _, gen_pred = self.gen_model(img, ldmk)
-                j = get_label_noise(gen_pred, label)
-                gamma = self.class_ada_loss.get_gamma(label)
-                angle = margin[label]
 
-                cos = margin_logit(cos=pred[torch.arange(label.shape[0]),label],
-                                    j=j,
-                                    angle=angle,
-                                    m=self.args.margin,
-                                    gamma=gamma)
-                pred[torch.arange(label.shape[0]),label] = cos.to(pred.dtype)
-        pred = torch.nn.functional.softmax(pred,dim=-1)
-        loss = torch.nn.functional.cross_entropy(pred, label, reduction='none') * coef
-        loss = torch.mean(loss, dim=0, keepdim=False)
+
+        with torch.no_grad(): # without bias margin and
+            _, gen_pred = self.gen_model(img, ldmk)
+            j = get_label_noise(label=label, pred=gen_pred) # sparse tensor, (bs, num_classes )
+        pred = including_margin(pred,j,0.2)
+
+        loss = torch.nn.functional.cross_entropy(pred, label)
         return loss, pred
 
     def run_train_epoch(self):
