@@ -13,6 +13,7 @@ def init_wandb(args):
             'batch_size' : args.batch_size,
             'epochs' : args.n_epochs,
             'world_size' : args.world_size,
-            'save_path' : f'checkpoint/{name}'
+            'save_path' : f'checkpoint/{name}',
+            'server': args.server
         }
     )

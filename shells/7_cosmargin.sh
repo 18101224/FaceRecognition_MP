@@ -17,3 +17,4 @@ CUDA_VISIBLE_DEVICES=1 python3 pretrain.py --world_size=1 \
 --instance_adaloss_ckpt=checkpoint/vanilla12m \
 --proportion_alpha=0 \
 --cos_margin_loss=True
+

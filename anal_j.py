@@ -1,6 +1,6 @@
 from models import kprpe_fer
 import torch
-from analysis import compute_all_label_noise, plot_j_distribution
+from analysis import compute_all_label_noise, plot_j_distribution, plot_label_noise_confusion, compute_label_noise_confusion
 from aligners import get_aligner
 from dataset import FER
 from torch.utils.data import DataLoader
@@ -20,7 +20,10 @@ if __name__ == '__main__':
     # gen_model.eval()
     # info = compute_all_label_noise(dataloader,gen_model, aligner, device)
     # plot_j_distribution(info,save_path='results/eval_j_dist.png')
-    gen_model.train()
-    info = compute_all_label_noise(dataloader,gen_model, aligner, device)
-    plot_j_distribution(info, save_path='results/train_j_dist.png')
-
+    # gen_model.train()
+    # info = compute_all_label_noise(dataloader,gen_model, aligner, device)
+    # plot_j_distribution(info, save_path='results/train_j_dist.png')
+    gen_model.eval()
+    confusion_mat, class_counts, noise_counts = compute_label_noise_confusion(dataloader, gen_model, aligner, device,num_classes=7)
+    plot_label_noise_confusion(confusion_mat, class_counts, noise_counts, save_path='results/training_label_noise_confusion.png')
+    

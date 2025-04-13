@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # data_arg = Namespace(**data_arg)
     # dataset = FER(data_arg,'checkpoint/quality',train=False)
     # loader = DataLoader(dataset,shuffle=False,batch_size=12)
-    ckpt_path = 'checkpoint/only_margin_low'
+    ckpt_path = 'checkpoint/angle_cos_label_bias_margin_theta0001'
 
     config_path = 'checkpoint/adaface_vit_base_kprpe_webface4m'
     model = kprpe_fer(ckpt_path,cos=True)
@@ -38,9 +38,9 @@ if __name__ == '__main__':
     weight = model.classifier.kernel.transpose(-1,-2) # num_classes, dims
     normed_weight = nn.functional.normalize(weight,dim=1).cpu().detach().numpy() #
 
-    positions = plot_sphere_distribution(weights, save_path='sphere_viz.png')
+    positions = plot_sphere_distribution(normed_weight, save_path='sphere_viz.png')
 
     # Optionally, check how well angles are preserved
-    plot_angle_preservation(weights, positions)
+    plot_angle_preservation(normed_weight, positions)
 
     plot_angular_distribution(normed_weight,save_path=f'{args.name}.png')

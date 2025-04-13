@@ -9,13 +9,12 @@ import sys
 sys.path.extend('..')
 from utils import init_quality_model, by_ml
 from copy import deepcopy
-from .kp_rpe import *
 import numpy as np
 from tqdm import tqdm
 import os
 import torch.distributed as dist
 import pickle
-from collections import defaultdict
+from collections import Counter
 
 def exc_label(i):
     # Affect to RAF label
@@ -43,11 +42,12 @@ class FER(Dataset):
         else:
             post = 'valid' if 'RAF' in self.root else 'test'
             self.transforms = transforms.Compose([
-                transforms.Resize(112),
+                transforms.Resize((112,112),),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5] * 3, [0.5] * 3)
             ])
             memfile_path = os.path.join(args.dataset_path,'memfile_valid')
+
         if os.path.exists(memfile_path):
             self.paths, self.labels, self.class_qualities, self.qualities = self.load_memfile()
         if args.world_size > 1 :
@@ -62,7 +62,8 @@ class FER(Dataset):
                 qualities = []
                 class_qualities = [0]*7
                 for i in range(7):
-                    dir = glob(f'{self.root}/{post}/{i}/*')
+                    bias = 1 if 'RAF' in self.root else 0
+                    dir = glob(f'{self.root}/{post}/{i+bias}/*')
                     paths += dir
                     label = exc_label(i) if 'Affect' in self.root else i
                     labels += [label]*len(dir)
@@ -84,6 +85,10 @@ class FER(Dataset):
                 dist.barrier()
 
             self.paths, self.labels, self.class_qualities, self.qualities = self.load_memfile()
+        class_counts = Counter(self.labels.tolist())
+        self.class_counts = [0]*(max(self.labels)+1)
+        for key, value in class_counts.items():
+            self.class_counts[int(key)] = value
 
     def load_memfile(self):
         post = 'train' if self.train else 'valid'
@@ -111,6 +116,8 @@ class FER(Dataset):
         img = self.transforms(img)
         return img, self.labels[idx], self.qualities[idx], self.class_qualities[self.labels[idx]]
 
+    def get_class_counts(self):
+        return torch.tensor(self.class_counts)
 
 
 
@@ -190,17 +197,3 @@ class selected(raf):
     def __len__(self):
         return self.len
 
-class raf_for_kp(raf):
-    def __init__(self,root,ckpt_path,train=True):
-        super().__init__(root,ckpt_path,train)
-        if train:
-            self.transforms = get_kprpe_transform_train()
-        else:
-            self.transforms = get_kprpe_transform_valid()
-class AffectNet_for_kp(AffectNet):
-    def __init__(self,root,ckpt_path,train=True):
-        super().__init__(root,ckpt_path,train)
-        if train:
-            self.transforms = get_kprpe_transform_train()
-        else:
-            self.transforms = get_kprpe_transform_valid()

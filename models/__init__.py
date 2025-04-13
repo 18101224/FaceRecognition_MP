@@ -4,6 +4,7 @@ from .kp_rpe import *
 import sys
 sys.path.extend('..')
 from utils import *
+from .resnet_backbone import ResNetClassifier
 
 
 
@@ -135,3 +136,6 @@ def get_model(model_config):
         for param in model.parameters():
             param.requires_grad_(False)
     return model
+
+def get_resnet_classifier(num_classes):
+    return ResNetClassifier(num_classes)

@@ -11,10 +11,12 @@ from .rl_logger import *
 from datetime import datetime
 from .confusion import *
 from .eval_quality import *
+
 def get_exp_name():
     now = datetime.now()
     ssmmhhdd = f"{now.month:02}{now.day:02}{now.hour:02}{now.minute:02}{now.second:02}"
     return ssmmhhdd
+
 def get_acc(x,y):
     '''
     :param x:
@@ -26,7 +28,17 @@ def get_acc(x,y):
     result = pred == y
     result = result.detach().cpu()
     result = sum(result)
-    return result/bs
+    return (result/bs).item()
+
+def get_macro_acc(x,y):
+    _, pred = torch.max(x,dim=-1)
+    binary = pred == y
+    n_classes = x.shape[-1]
+    result = torch.zeros((n_classes)).to(x.device)
+    for c in range(n_classes):
+        a = sum(binary[y==c])
+        result[c] = a
+    return result.reshape(-1)
 
 def get_norm(model,loader,device):
     with torch.no_grad():
@@ -85,9 +97,13 @@ def save_dict(dict,path):
         pickle.dump(dict,f)
 
 def sync(metric,device):
-    metric = torch.tensor(metric,device=device,dtype=torch.float32)
+    metric = torch.tensor(metric,device=device,dtype=torch.float64)
     torch.distributed.all_reduce(metric,op=torch.distributed.ReduceOp.SUM)
     return metric.item()
+
+def sync_tensor(tensor):
+    torch.distributed.all_reduce(tensor,op=torch.distributed.ReduceOp.SUM)
+    return tensor
 
 def torchload(path,weights_only,map_location=None):
     try:

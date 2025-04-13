@@ -6,6 +6,8 @@ import sys
 sys.path.extend('..')
 from kp import get_kprpe
 import torch
+from .resmodule import Residual
+
 
 class Classifier(nn.Module):
     def __init__(self):
@@ -13,7 +15,8 @@ class Classifier(nn.Module):
         self.blocks = nn.ModuleList()
         self.norms = nn.ModuleList()
         self.activations = nn.ModuleList()
-        for i in range(4):
+        self.mlps = Residual(in_features=512,num_layers=15)
+        for i in range(4): # 원래 4였음
             self.blocks.append(
                 nn.Sequential(
                 nn.Linear(512,512),
@@ -51,14 +54,19 @@ class CosClassifier(Classifier):
         self.kernel = nn.Parameter(
             weight.transpose(-1, -2), requires_grad=True
         ) # dim, num_class
+    def get_angles(self):
+        kernel = nn.functional.normalize(self.kernel,dim=0,p=2)
+        sims = kernel.transpose(-1, -2) @ kernel
+        sims.fill_diagonal_(0) # shaped as num_classes X num_classses ( cos similarities )
+        sims = torch.triu(sims)
+        return sims # shaped as 2D matrix
 
-    @torch.no_grad()
-    def get_margin(self):
-        sims = self.kernel.transpose(-1, -2) @ self.kernel
-        sims.fill_diagonal_(0)
-        _, indices = torch.max(sims, dim=-1)
-        margins = torch.arccos(sims[torch.arange(sims.shape[0]), indices])
+
+    def get_margin(self, sim):
+        _, indices = torch.max(sim,dim=-1)
+        margins = torch.arccos(sim[torch.arange(sim.shape[0]),indices])
         return margins
+
 
     def forward(self,x):
         for block, norm, act in zip(self.blocks,self.norms,self.activations):
@@ -70,8 +78,8 @@ class CosClassifier(Classifier):
         x = nn.functional.normalize(x, p=2, dim=1)
         kernel = nn.functional.normalize(self.kernel, dim=0, p=2) # dim, num_class
         cos = x @ kernel  # bs, num_classes
-        margins = self.get_margin()
-        return margins, cos
+        angles = self.get_angles()
+        return angles, cos
 
 
 

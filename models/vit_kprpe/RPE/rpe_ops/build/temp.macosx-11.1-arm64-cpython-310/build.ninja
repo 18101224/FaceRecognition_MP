@@ -15,7 +15,7 @@ rule compile
 
 
 
-build /Users/seominjae/rl/models/vit_kprpe/RPE/rpe_ops/build/temp.macosx-11.1-arm64-cpython-310/rpe_index.o: compile /Users/seominjae/rl/models/vit_kprpe/RPE/rpe_ops/rpe_index.cpp
+build /Users/seominjae/Library/Mobile$ Documents/com~apple~CloudDocs/rl/models/vit_kprpe/RPE/rpe_ops/build/temp.macosx-11.1-arm64-cpython-310/rpe_index.o: compile /Users/seominjae/Library/Mobile$ Documents/com~apple~CloudDocs/rl/models/vit_kprpe/RPE/rpe_ops/rpe_index.cpp
 
 
 

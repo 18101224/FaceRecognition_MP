@@ -4,7 +4,7 @@ from argparse import Namespace
 
 if __name__ == '__main__':
     args = {
-        'dataset_path':'../data/AffectNet7',
+        'dataset_path':'../data/RAF-DB',
         'world_size':1,
 
     }
