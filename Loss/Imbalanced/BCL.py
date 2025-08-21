@@ -75,7 +75,7 @@ class LogitAdjust:
 
 class BCLLoss:
     def __init__(self, cls_num_list, args, temperature=1.):
-        self.criterion_ce = LogitAdjust(cls_num_list)
+        self.criterion_ce = LogitAdjust(cls_num_list, cosine_scaling=args.cosine_scaling)
         self.criterion_scl = BalSCL(cls_num_list, temperature)
 
 
