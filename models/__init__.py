@@ -189,7 +189,7 @@ class ImbalancedModel(nn.Module):
         returns : backbone_feature, rotated_feature, logit
         '''
         z = nn.functional.normalize(self.backbone(x), dim=-1)
-        z_ = nn.functional.normalize(self.feature_module(z), dim=-1)
+        z_ = nn.functional.normalize(self.feature_module(z), dim=-1) if self.feature_module is not False else z 
         
         weight = self.get_kernel() # dim, num_classes
         logit = z_ @ weight
