@@ -2,6 +2,10 @@ from .class_adaloss import *
 from .instance_adaloss import *
 from .label_noise import get_label_noise, including_margin
 from .angleLoss import get_angle_loss
+from .OOS_LNAAL import *
+from .Imbalanced import *
+    
+__all__ = ['Proportion_loss', 'cosine_constant_margin_loss', 'get_label_noise', 'including_margin', 'get_angle_loss', 'get_confidence_db', 'get_instant_margin', 'apply_margin', 'BalSCL', 'BCLLoss'   ]
 
 class Proportion_loss:
     def __init__(self, labels, alpha,device):
@@ -44,3 +48,9 @@ def margin_logit(cos,j,angle,m,gamma):
     cos = torch.cos(thetas-m*angle*(1-j)) - m*j*gamma
     return cos
 
+
+def cosine_constant_margin_loss(preds, labels, m):
+    margin = torch.zeros_like(preds, device=preds.device)
+    margin[torch.arange(preds.shape[0]), labels] += m
+    preds = preds - margin 
+    return torch.nn.functional.cross_entropy(preds, labels)

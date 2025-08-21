@@ -4,5 +4,4 @@
 
 # Ignore all files in the checkpoint directory
 checkpoint/
-
-
+results/

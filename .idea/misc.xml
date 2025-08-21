@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="midterm" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="midterm" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="main" project-jdk-type="Python SDK" />
 </project>

@@ -1,6 +1,7 @@
 from .base import BaseAligner
 from omegaconf import OmegaConf
 import os
+
 def get_aligner(cfg_path):
     aligner_cfg = OmegaConf.load(os.path.join(cfg_path,'aligner.yaml'))
     aligner_cfg.start_from = os.path.join(cfg_path,'aligner.pt')

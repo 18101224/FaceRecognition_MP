@@ -19,3 +19,4 @@ omegaconf
 opencv-python
 scikit-image
 opencv-contrib-python
+tensorflow-datasets 

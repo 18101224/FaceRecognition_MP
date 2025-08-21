@@ -35,7 +35,7 @@ class Preprocessor():
         else:
             padding = self.padding
         padded_imgs = self.make_padded_img_batched(square_imgs, padding=padding, padding_val=padding_val)
-
+        padded_imgs = padded_imgs.contiguous()
         size=(self.output_size, self.output_size)
         if imgs.dtype == torch.float32:
             resized_imgs = F.interpolate(padded_imgs, size=size, mode='bilinear', align_corners=True)

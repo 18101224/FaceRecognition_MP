@@ -1,23 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="mj@mine1:10011 agent" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="gpuadmin@server5:11000 agent" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false">
     <option name="confirmBeforeUploading" value="false" />
     <serverData>
       <paths name="gpuadmin@server5:11000 agent">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/home/gpuadmin/mj" local="$PROJECT_DIR$" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="gpuadmin@server5:11000 agent (2)">
         <serverdata>
           <mappings>
             <mapping deploy="/home/gpuadmin/mj/rl" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="gpuadmin@server7:14000 agent (2)">
+      <paths name="gpuadmin@server7:14000 agent">
         <serverdata>
           <mappings>
             <mapping deploy="/home/gpuadmin/mj/rl" local="$PROJECT_DIR$" />

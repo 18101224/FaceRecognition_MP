@@ -54,6 +54,7 @@ class CosClassifier(Classifier):
         self.kernel = nn.Parameter(
             weight.transpose(-1, -2), requires_grad=True
         ) # dim, num_class
+        
     def get_angles(self):
         kernel = nn.functional.normalize(self.kernel,dim=0,p=2)
         sims = kernel.transpose(-1, -2) @ kernel

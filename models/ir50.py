@@ -140,8 +140,11 @@ def get_blocks(num_layers):
 
 
 class Backbone(Module):
-    def __init__(self, num_layers, drop_ratio, mode='ir'):
+    def __init__(self, checkpoint_path):
         super(Backbone, self).__init__()
+        num_layers = 50
+        drop_ratio = 0.0
+        mode = 'ir'
         # assert num_layers in [50, 100, 152], 'num_layers should be 50,100, or 152'
         assert mode in ['ir', 'ir_se'], 'mode should be ir or ir_se'
         blocks1, blocks2, blocks3 = get_blocks(num_layers)
@@ -181,55 +184,20 @@ class Backbone(Module):
                     unit_module(bottleneck.in_channel,
                                 bottleneck.depth,
                                 bottleneck.stride))
-        # modules4 = []
-        # for block in blocks4:
-        #     for bottleneck in block:
-        #         modules4.append(
-        #             unit_module(bottleneck.in_channel,
-        #                         bottleneck.depth,
-        #                         bottleneck.stride))
+
         self.body1 = Sequential(*modules1)
         self.body2 = Sequential(*modules2)
         self.body3 = Sequential(*modules3)
-        # self.body4 = Sequential(*modules4)
+
+
+        self.load_state_dict(torch.load(checkpoint_path, weights_only=False, map_location='cpu'))
 
     def forward(self, x):
         x = F.interpolate(x, size=112)
         x = self.input_layer(x)
-        x1 = self.body1(x)
-        x2 = self.body2(x1)
-        x3 = self.body3(x2)
+        x = self.body1(x)
+        x = self.body2(x)
+        x = self.body3(x)
+        x = F.adaptive_avg_pool2d(x, 1).reshape(x.shape[0],-1)
+        return x
 
-        # x = self.output_layer(x)
-        # return l2_norm(x)
-
-        return x1, x2, x3
-
-def load_pretrained_weights(model, checkpoint):
-    import collections
-    if 'state_dict' in checkpoint:
-        state_dict = checkpoint['state_dict']
-    else:
-        state_dict = checkpoint
-    model_dict = model.state_dict()
-    new_state_dict = collections.OrderedDict()
-    matched_layers, discarded_layers = [], []
-    for i, (k, v) in enumerate(state_dict.items()):
-        # print(i)
-
-        # If the pretrained state_dict was saved as nn.DataParallel,
-        # keys would contain "module.", which should be ignored.
-        if k.startswith('module.'):
-            k = k[7:]
-        if k in model_dict and model_dict[k].size() == v.size():
-
-            new_state_dict[k] = v
-            matched_layers.append(k)
-        else:
-            # print(k)
-            discarded_layers.append(k)
-    # new_state_dict.requires_grad = False
-    model_dict.update(new_state_dict)
-    model.load_state_dict(model_dict)
-    print('load_weight', len(matched_layers))
-    return model

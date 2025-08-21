@@ -1,5 +1,6 @@
 import wandb
 from utils import get_exp_name
+
 def init_wandb(args):
     with open(args.wandb_token,'r') as f:
         token = f.readline()[:-1]

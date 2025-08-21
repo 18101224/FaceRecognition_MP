@@ -15,185 +15,98 @@ import os
 import torch.distributed as dist
 import pickle
 from collections import Counter
+from sklearn.model_selection import StratifiedKFold
+from .sampler import ImbalancedDatasetSampler
+from .sampler_wrapper import DistributedSamplerWrapper
+import numpy as np
+from collections import Counter
 
 def exc_label(i):
     # Affect to RAF label
     label = [6,3,4,0,1,2,5]
     return label[i]
 
-
-
 class FER(Dataset):
-    def __init__(self,args,ckpt_path,train=True):
+    def __init__(self,args,transform,train=True, idx=True):
         super().__init__()
         self.root = args.dataset_path
         self.train = train
-        if train:
-            post = 'train'
-            self.transforms = transforms.Compose([
-                transforms.Resize((112, 112)),
-                transforms.RandomResizedCrop(112, scale=(0.5, 1.0)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5] * 3, [0.5] * 3)
-            ])
-            memfile_path = os.path.join(args.dataset_path, 'memfile_train')
-        else:
-            post = 'valid' if 'RAF' in self.root else 'test'
-            self.transforms = transforms.Compose([
-                transforms.Resize((112,112),),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5] * 3, [0.5] * 3)
-            ])
-            memfile_path = os.path.join(args.dataset_path,'memfile_valid')
-
-        if os.path.exists(memfile_path):
-            self.paths, self.labels, self.class_qualities, self.qualities = self.load_memfile()
-        if args.world_size > 1 :
-            dist.barrier()
-        if not os.path.exists(memfile_path):
-            if args.world_size == 1 or args.rank == 0:
-                os.mkdir(memfile_path)
-
-                model = init_quality_model(ckpt_path)
-                paths = []
-                labels = []
-                qualities = []
-                class_qualities = [0]*7
-                for i in range(7):
-                    bias = 1 if 'RAF' in self.root else 0
-                    dir = glob(f'{self.root}/{post}/{i+bias}/*')
-                    paths += dir
-                    label = exc_label(i) if 'Affect' in self.root else i
-                    labels += [label]*len(dir)
-                    qs = []
-                    for path in dir:
-                        qs.append(by_ml(model,path))
-                    qualities.append(qs)
-                    class_qualities[label] = qs
-                dataset = {
-                    'img_paths':paths,
-                    'labels':labels,
-                    'class_qualities':class_qualities,
-                    'qualities':qualities
-                }
-                with open(os.path.join(memfile_path,'mem.pkl'),'wb') as f:
-                    pickle.dump(dataset,f)
-
-            if args.world_size >1 :
-                dist.barrier()
-
-            self.paths, self.labels, self.class_qualities, self.qualities = self.load_memfile()
-        class_counts = Counter(self.labels.tolist())
-        self.class_counts = [0]*(max(self.labels)+1)
-        for key, value in class_counts.items():
-            self.class_counts[int(key)] = value
-
-    def load_memfile(self):
-        post = 'train' if self.train else 'valid'
-        with open(f'{self.root}/memfile_{post}/mem.pkl','rb') as f:
-            dataset = pickle.load(f)
-        labels = torch.tensor(dataset['labels'],dtype=torch.long)
-        qualities = []
-        for qs in dataset['qualities']:
-            qualities+=qs
-        qualities = np.array(qualities)
-        return_qualities = (qualities-qualities.mean())/qualities.std()
-        class_qualities = [0]*7
-        for label, qs in enumerate(dataset['class_qualities']):
-            class_qualities[label] = sum(qs)/len(qs)
-        class_qualities = torch.tensor(class_qualities)
-        class_qualities = (class_qualities - qualities.mean())/qualities.std()
-        class_qualities = nn.functional.softmax(-class_qualities)
-        return dataset['img_paths'], labels, class_qualities, return_qualities
+        post = 'train' if train else 'valid' if 'RAF' in self.root else 'test'
+        offset = 1 if 'RAF' in self.root else 0 
+        self.transform=transform
+        self.paths = []
+        self.labels = []
+        for i in range(7):
+            paths = sorted(glob(f'{self.root}/{post}/{i+offset}/*'))
+            self.paths += paths 
+            self.labels += [i]*len(paths)
+        self.labels = np.array(self.labels,dtype=np.long)
+        self.img_num_list = None 
+        self.get_img_num_per_cls()
+        self.idx = idx 
 
     def __len__(self):
         return self.labels.shape[0]
 
     def __getitem__(self,idx):
         img = Image.open(self.paths[idx])
-        img = self.transforms(img)
-        return img, self.labels[idx], self.qualities[idx], self.class_qualities[self.labels[idx]]
-
-    def get_class_counts(self):
-        return torch.tensor(self.class_counts)
-
-
-
-
-class raf(Dataset):
-    def __init__(self,root,ckpt_path,train=True):
-        super().__init__()
-        if train :
-            post = 'train'
+        if isinstance(self.transform, list):
+            samples = [tr(img) for tr in self.transform]
+            if self.idx : 
+                return samples, self.labels[idx] , idx
+            else : 
+                return samples, self.labels[idx]
         else:
-            post = 'valid'
+            if self.idx : 
+                return self.transform(img), self.labels[idx] , idx
+            else : 
+                return self.transform(img), self.labels[idx]
+    
+    def get_img_num_per_cls(self):
+        if self.img_num_list is None:
+            counter = Counter(self.labels)
+            self.img_num_list = [0]*(np.max(self.labels)+1)
+            for key, value in counter.items():
+                self.img_num_list[key] = value
+        return np.array(self.img_num_list)
 
-        label_offset = 1 if 'RAF' in root else 0
-        self.transforms = transforms.Compose([
-            transforms.Resize(112),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5]*3,[0.5]*3)
-        ])
-        model = init_quality_model(ckpt_path)
-        root = f'{root}/{post}'
-        self.paths = []
-        self.labels = []
-        self.qualities = []
-        for i in tqdm(range(label_offset,7+label_offset),desc=f'measuring quality for {post}'):
-            paths = glob(root+f'/{i}/*')
-            self.paths+=paths
-            self.labels+=[i-label_offset]*len(paths)
-            qualities = []
-            for path in paths:
-                qualities.append(by_ml(model,path))
-            self.qualities+=qualities
+class FER_KFOLD(FER):
+    def __init__(self, args, transform ,n_folds=5, fold_idx=0, train=True, random_seed=42):
+        super().__init__(args, transform, train=True)  # Always load all data, split later
 
-        self.qualities = np.array(self.qualities)
-        self.qualities = self.qualities/self.qualities.mean()
-        self.label = deepcopy(self.labels)
-        self.labels = torch.tensor(self.labels,dtype=torch.long)
-        self.len = len(self.labels)
-
-    def __getitem__(self,idx):
-        img = Image.open(self.paths[idx])
-        img = self.transforms(img)
-        return img, self.labels[idx], self.qualities[idx]
+        self.n_folds = n_folds
+        self.fold_idx = fold_idx
+        self.random_seed = random_seed
+        self.train = train
+        self.labels = np.array(self.labels)
+        
+        # self.paths: numpy array of all image paths, shape = (num_samples,)
+        self.paths = np.array(self.paths)
+        # self.original_paths: deep copy of all image paths, shape = (num_samples,)
+        self.original_paths = deepcopy(self.paths)
+        # self.indices: list of (train_idx, val_idx) tuples for each fold, each idx is a numpy array of indices
+        kf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=random_seed)
+        self.indices = list(kf.split(X=self.paths, y=self.labels))
+        # train_idx: indices for training samples in this fold, shape = (num_train_samples,)
+        # val_idx: indices for validation samples in this fold, shape = (num_val_samples,)
+        train_idx, val_idx = self.indices[fold_idx]
+        
+        self.val_idx = val_idx
+        if train:
+            selected_idx = train_idx
+        else:
+            selected_idx = val_idx
+        self.paths = self.paths[selected_idx]
+        self.labels = self.labels[selected_idx]
+        # Convert back to torch tensor for labels
+        self.labels = torch.tensor(self.labels, dtype=torch.long)
 
     def __len__(self):
-        return self.len
-
-    def get_label(self):
-        return self.label
-
-class AffectNet(raf):
-    def __init__(self,root,ckpt_path,train=True):
-        super().__init__(root,ckpt_path,train)
-        if train :
-            post = 'train'
-        else:
-            post = 'valid' if 'RAF' not in root else 'test'
-        root = f'{root}/{post}'
-        self.labels = []
-        for i in range(7):
-            paths = glob(root+f'/{i}/*')
-            label = exc_label(i)
-            self.labels += [label]*len(paths)
-        self.labels = torch.tensor(self.labels,dtype=torch.long)
+        return len(self.paths)
 
 
-class selected(raf):
-    def __init__(self,root, indices):
-        super().__init__(root, train=True)
-        self.paths = [self.paths[i] for i in indices]
-        self.labels = torch.tensor([self.labels[i] for i in indices], dtype=torch.long)
-        self.len = len(indices)
-    def __getitem__(self,idx):
-        img = Image.open(self.paths[idx])
-        img = self.transforms(img)
-        return img, self.labels[idx], 0
+    def get_indice_db(self):
+        result = torch.cat((torch.tensor(self.val_idx),torch.tensor([self.fold_idx]*len(self.val_idx)))) #deterministic. 
+        return result
 
-    def __len__(self):
-        return self.len
 

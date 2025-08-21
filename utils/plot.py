@@ -4,6 +4,9 @@ import random
 import os
 import pickle
 import torch
+from PIL import Image
+import glob
+import imageio
 
 def get_random_color():
     result = []
@@ -105,3 +108,28 @@ def plot_rl(path, name):
     plt.legend(loc='lower left')
     plt.savefig(f'{name}_accuracy.png')
     plt.show()
+
+
+def plot_angle_gif(path, duration=6, fps=30):
+    image_files = sorted([
+        os.path.join(path, f) 
+        for f in os.listdir(path) 
+        if f.lower().endswith(('png', 'jpg', 'jpeg'))
+    ])
+    total_frames = fps * duration
+    num_images = len(image_files)
+
+    # 샘플링: 이미지가 많으면 프레임 수에 맞춰 골고루 샘플링
+    if num_images > total_frames:
+        step = num_images / total_frames
+        sampled_indices = [int(step * i) for i in range(total_frames)]
+    else:
+        sampled_indices = list(range(num_images))
+    gif_path = os.path.join(path, 'angle_animation.gif')
+    # 이미지 읽기
+    images = [imageio.imread(image_files[idx]) for idx in sampled_indices]
+
+    # gif 저장 - duration은 한 프레임당 표시 시간(초)
+    imageio.mimsave(gif_path, images, fps=fps)
+
+    print(f"GIF saved with {len(images)} frames, fps: {fps}, duration: {duration}s")
