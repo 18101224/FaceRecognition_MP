@@ -73,7 +73,7 @@ class LogitAdjust:
 
         if self.cosine_constant_margin > 0.0:
             mask = torch.zeros_like(x, device=x.device)
-            mask[torch.arange(x.shape[0], target.reshape(-1))] = -self.cosine_constant_margin
+            mask[torch.arange(x.shape[0]), target.reshape(-1)] = -self.cosine_constant_margin
             x = x + mask 
         x_m =  self.scale*(x + self.m_list)
         return F.cross_entropy(x_m, target, weight=self.weight)
