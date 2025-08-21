@@ -61,21 +61,26 @@ class BalSCL:
 
 
 class LogitAdjust:
-    def __init__(self, cls_num_list, cosine_scaling=1., tau=1. , weight=None):
+    def __init__(self, cls_num_list, cosine_scaling=1., tau=1. , weight=None, cosine_constant_margin=0.0):
         cls_num_list = torch.cuda.FloatTensor(cls_num_list)
         cls_p_list = cls_num_list / cls_num_list.sum()
         m_list = tau * torch.log(cls_p_list)
         self.m_list = m_list.view(1, -1)
         self.weight = weight
         self.scale = cosine_scaling
+        self.cosine_constant_margin = cosine_constant_margin
     def __call__(self, x, target):
-        x_m =  (self.scale*x + self.m_list)
+        x_m =  self.scale*(x + self.m_list)
+        # if self.cosine_constant_margin > 0.0:
+        #     mask = torch.zeros_like(x_m, device=x.device)
+        #     mask[torch.arange(x_m.shape[0], target.reshape(-1))] = -self.cosine_constant_margin
+
         return F.cross_entropy(x_m, target, weight=self.weight)
 
 
 class BCLLoss:
     def __init__(self, cls_num_list, args, temperature=1.):
-        self.criterion_ce = LogitAdjust(cls_num_list, cosine_scaling=args.cosine_scaling)
+        self.criterion_ce = LogitAdjust(cls_num_list, cosine_scaling=args.cosine_scaling, cosine_constant_margin=args.cosine_constant_margin)
         self.criterion_scl = BalSCL(cls_num_list, temperature)
 
 
