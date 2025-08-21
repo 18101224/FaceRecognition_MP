@@ -165,7 +165,6 @@ class ImbalancedModel(nn.Module):
             self.head_fc = nn.Sequential(nn.Linear(dim_in, mid_dim), nn.BatchNorm1d(mid_dim), nn.ReLU(inplace=True), nn.Linear(mid_dim, feat_dim))
 
 
-
         self.feature_branch = feature_branch
         self.feature_module = feature_module
 
@@ -187,30 +186,20 @@ class ImbalancedModel(nn.Module):
         
     def forward(self, x, features=False):
         '''
-        returns : feat_mlp, logits, projected_centers
+        returns : backbone_feature, rotated_feature, logit
         '''
-        feat = self.backbone(x)
-        feat = torch.nn.functional.normalize(feat, dim=1)
+        z = nn.functional.normalize(self.backbone(x), dim=-1)
+        z_ = nn.functional.normalize(self.feature_module(z), dim=-1)
+        
+        weight = self.get_kernel() # dim, num_classes
+        logit = z_ @ weight
 
-        logit_feat = torch.nn.functional.normalize(self.feature_module(feat), dim=1) if self.feature_module is not False else feat 
-            
-
-        kernel = self.get_kernel()
-        logits = logit_feat @ kernel
-        weight = self.weight.T
-
-         # input is num_classes, dim 
-        if features:
-            if self.feature_branch :
-                centers_logits = nn.functional.normalize(self.head_fc(weight), dim=1) # num_classes, dim 
-                processed_feat =  nn.functional.normalize(self.head(logit_feat), dim=1) 
-                feat = processed_feat
-            else:
-                centers_logits = weight
-                processed_feat = logit_feat
-            return feat, processed_feat, logits, centers_logits
+        if features : 
+            centers = nn.functional.normalize(self.head_fc(weight.T), dim=-1)
+            processed_feat = nn.functional.normalize(self.head(z_), dim=-1)
+            return processed_feat, logit, centers 
         else:
-            return logits
+            return logit 
     
     def analysis(self, x):
         '''

@@ -378,7 +378,7 @@ class Trainer:
         wandb.login(key=token)
 
     # INSERT_YOUR_CODE
-        import uuid
+        import uuid 
         self.wandb_id = str(uuid.uuid4())
         
         wandb.init(
@@ -391,19 +391,17 @@ class Trainer:
     
     def run_train_forward(self, images, labels, train=True):
         """Run forward pass for training with optional margin and angle loss."""
-        features, processed_features, outputs, centers_logits = self.model(images, features=True) # projected_features, logits, projected_centers
+        processed_feat, outputs, centers = self.model(images, features=True) # projected_features, logits, projected_centers
         original_outputs = deepcopy(outputs.detach())
         losses = []
         losses_for_log = defaultdict(int)
         if train : 
             if 'BCL' in self.args.loss : 
-                _ , f1, f2 = torch.split(features, [labels.shape[0]]*3, dim=0)
-                features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-                #_, f1, f2 = torch.split(processed_features, [labels.shape[0]]*3, dim=0)
-                #processed_features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
+                _ , f1, f2 = torch.split(processed_feat, [labels.shape[0]]*3, dim=0)
+                processed_feat = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
                 outputs, _, _ = torch.split(outputs, [labels.shape[0]]*3, dim=0)
-                loss, bcl = self.bcl(centers=centers_logits, logits=outputs, features=features,
-                                      targets=labels, processed_features=(processed_features if self.args.splitted_contrastive_learning else None))
+                loss, bcl = self.bcl(centers=centers, logits=outputs, features=processed_feat,
+                                      targets=labels, processed_features=None)
                 losses.append(bcl*self.args.cl_weight)
                 losses_for_log['BCL'] = bcl.detach().cpu().item() # weight 적용 전 
             

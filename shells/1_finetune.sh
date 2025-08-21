@@ -8,7 +8,7 @@ make_cmd () {
   local LR=$1
   local EXTRA=$2        # loss·weight·스케줄 인자 묶음
   python3 train_imbalanced.py \
-        --learning_rate="$LR" --batch_size=96 --n_epochs=200 --weight_decay=5e-4 \
+        --learning_rate="$LR" --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
         --cos=True --momentum=0.9 --world_size=1 --wandb_token=../wandb.txt \
         --model_type=resnet32 --dataset_name=cifar10 --imb_type=exp --imb_factor=0.01 \
         --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True $EXTRA
