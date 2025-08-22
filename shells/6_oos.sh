@@ -1,14 +1,32 @@
-lrs=(5e-6 7e-6)
+#!/bin/bash
+# run_all_cifar100.sh
 
-for lr in "${lrs[@]}"; do
-    CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 OOS_target_train.py --world_size=4 \
-        --n_folds=3 --g_net_ckpt=checkpoints/6062011123857 --random_seed=566 --kp_rpe_cfg_path=checkpoint/adaface_vit_base_kprpe_webface12m \
-        --cos_constant_margin=0.5 --instance_ada_loss=True \
-        --learning_rate=$lr --batch_size=256 --n_epochs=30 \
-        --dataset_path=../data/AffectNet7 --dataset_name=AffectNet7 \
-        --wandb_token=../wandb.txt --server=5 \
-        --confidence_constant=1 --cos_scaling=16 \
-        --oos_tensor=checkpoint/conf_db.pt
+
+LEARNING_RATES=(0.15 0.1 0.07 0.05)
+
+make_cmd () {
+  local DEVICE=$1
+  local LR=$2
+  local EXTRA=$3        # loss·weight·스케줄 인자 묶음
+  $DEVICE python3 train_imbalanced.py \
+        --learning_rate="$LR" --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
+        --cos=True --momentum=0.9 --world_size=1 --wandb_token=../wandb.txt \
+        --model_type=resnet32 --dataset_name=cifar10 --imb_type=exp --imb_factor=0.01 \
+        --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True $EXTRA
+}
+
+
+for LR in "${LEARNING_RATES[@]}"; do
+
+  make_cmd "CUDA_VISIBLE_DEVICES=0" "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.1  --cosine_scaling=32  \
+                          --temperature=0.1 --scheduler=warmup" &  
+  make_cmd "CUDA_VISIBLE_DEVICES=1" "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.5  --cosine_scaling=32  \
+                          --temperature=0.1 --scheduler=warmup" &  
+                          
+  make_cmd "CUDA_VISIBLE_DEVICES=2" "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1  --cosine_scaling=32  \
+                          --temperature=0.1 --scheduler=warmup" &  
+
+
+   wait          # ---- 네 개 모두 종료될 때까지 대기 ----
 done
 
-python3 -c "from utils import send_message; send_message('server5 all experiment done')"
