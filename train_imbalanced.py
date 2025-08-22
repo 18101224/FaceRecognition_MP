@@ -144,7 +144,7 @@ def get_args():
     args.add_argument('--temperature', type=float, default=0.1)
     args.add_argument('--regular_simplex', default=False)
     args.add_argument('--splitted_contrastive_learning', default=False)
-
+    args.add_argument('--use_mean', default=False)
     # Model checkpoint
     args.add_argument('--model_type', type=str, choices=['resnet32','resnet50','resnext50','ir50'], default='resnet32')
     args.add_argument('--feature_branch', default=False)
@@ -414,7 +414,7 @@ class Trainer:
                 mode = self.model.module if self.args.world_size > 1 else self.model
                 kernel = mode.get_kernel()
                 angle_mean, angle_std = get_angle_loss(kernel)
-                ece = angle_mean + angle_std 
+                ece = angle_mean*int(self.args.use_mean) + angle_std 
                 losses.append(ece*self.args.ece_weight)
                 losses_for_log['ECE'] = ece.detach().cpu().item()
         else:
