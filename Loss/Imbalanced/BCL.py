@@ -70,7 +70,6 @@ class LogitAdjust:
         self.scale = cosine_scaling
         self.cosine_constant_margin = cosine_constant_margin
     def __call__(self, x, target):
-
         if self.cosine_constant_margin > 0.0:
             mask = torch.zeros_like(x, device=x.device)
             mask[torch.arange(x.shape[0]), target.reshape(-1)] = -self.cosine_constant_margin
