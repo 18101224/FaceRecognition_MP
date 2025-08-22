@@ -129,7 +129,6 @@ def get_args():
 
     # Logging and saving
     args.add_argument('--wandb_token', type=str,)
-
     args.add_argument('--use_wandb', default=False)
 
     # Research hyperparameters
@@ -405,19 +404,11 @@ class Trainer:
                 losses.append(bcl*self.args.cl_weight)
                 losses_for_log['BCL'] = bcl.detach().cpu().item() # weight 적용 전 
             
-            if include(self.args.loss, ['CE']) : 
-            # Add cosine margin if specified
-                print('U in ^^ ')
-                import sys; sys.exit()
-                if self.args.cosine_constant_margin:
-                    # Normalize features and weights
-                    margins = torch.zeros_like(outputs).to(images.device)
-                    margins[torch.arange(labels.shape[0]),labels] = self.args.cosine_constant_margin
-                    outputs = (outputs - margins)*self.args.cosine_scaling
-                loss = torch.nn.functional.cross_entropy(outputs, labels)*self.args.ce_weight
-
+            if include(self.args.loss, ['CE']) and not include(self.args.loss, ['BCL']): 
+                loss = torch.nn.functional.cross_entropy(outputs*self.args.cosine_scaling, labels)
             losses.append(loss*self.args.ce_weight)
             losses_for_log['CE'] = loss.detach().cpu().item()
+
             # Add angle loss if specified
             if include(self.args.loss, ['ECE']) : 
                 mode = self.model.module if self.args.world_size > 1 else self.model
