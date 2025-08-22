@@ -10,8 +10,8 @@ make_cmd () {
   python3 train_imbalanced.py \
         --learning_rate="$LR" --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
         --cos=True --momentum=0.9 --world_size=1 --wandb_token=../wandb.txt \
-        --model_type=resnet32 --dataset_name=cifar10 --imb_type=exp --imb_factor=0.01 \
-        --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True $EXTRA
+        --model_type=resnet32 --dataset_name=cifar100 --imb_type=exp --imb_factor=0.01 \
+        --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True --regular_simplex=True --feature_module=deepcomplex_3 $EXTRA
 }
 
 
@@ -25,6 +25,7 @@ for LR in "${LEARNING_RATES[@]}"; do
 
   make_cmd "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.5  --cosine_scaling=32  \
                           --temperature=0.1 --scheduler=warmup" &  
+                          
   make_cmd "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1  --cosine_scaling=32  \
                           --temperature=0.1 --scheduler=warmup" &  
 
