@@ -18,17 +18,17 @@ make_cmd () {
 for LR in "${LEARNING_RATES[@]}"; do
 
   make_cmd "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.1  --cosine_scaling=32  \
-                          --temperature=0.1 --scheduler=warmup"  
-  break 
-  # make_cmd "$LR" "--loss=BCL --ce_weight=2 --cl_weight=0.6  --cosine_scaling=32 --feature_module=deepcomplex_3 \
-  #                         --temperature=0.1 --scheduler=warmup"  &
+                          --temperature=0.1 --scheduler=warmup" &  
 
-  # make_cmd "$LR" "--loss=BCL --ce_weight=2 --cl_weight=0.6  --cosine_scaling=32 --feature_module=deepcomplex_3 \
-  #                         --temperature=0.1 --scheduler=warmup"  &
+  make_cmd "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.3  --cosine_scaling=32  \
+                          --temperature=0.1 --scheduler=warmup" &  
 
-  # make_cmd "$LR" "--loss=BCL --ce_weight=2 --cl_weight=0.6  --cosine_scaling=32 --feature_module=deepcomplex_3 \
-  #                         --temperature=0.1 --scheduler=warmup"  &
+  make_cmd "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.5  --cosine_scaling=32  \
+                          --temperature=0.1 --scheduler=warmup" &  
+  make_cmd "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1  --cosine_scaling=32  \
+                          --temperature=0.1 --scheduler=warmup" &  
 
-  # wait          # ---- 네 개 모두 종료될 때까지 대기 ----
+
+   wait          # ---- 네 개 모두 종료될 때까지 대기 ----
 done
 

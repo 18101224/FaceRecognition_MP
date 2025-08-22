@@ -18,8 +18,8 @@ export alarm_user="u2258jmd7zfuqh7r3ap4rx9bo6szh9"
 export alarm_app="a8ekwdu7tj37drid8o5q6sudd5f6ed"
 
 # Learning rate 리스트
-export LR_0=0.0000001
-export LR_1=0.00000007
+export LR_0=0.000001
+export LR_1=0.000005
 
 
 source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
