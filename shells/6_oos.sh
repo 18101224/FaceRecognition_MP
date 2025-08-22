@@ -8,7 +8,7 @@ make_cmd () {
   local DEVICE=$1
   local LR=$2
   local EXTRA=$3        # loss·weight·스케줄 인자 묶음
-  $DEVICE python3 train_imbalanced.py \
+  "$DEVICE "python3 train_imbalanced.py \
         --learning_rate="$LR" --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
         --cos=True --momentum=0.9 --world_size=1 --wandb_token=../wandb.txt \
         --model_type=resnet32 --dataset_name=cifar10 --imb_type=exp --imb_factor=0.01 \
