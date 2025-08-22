@@ -423,7 +423,7 @@ class Trainer:
                 mode = self.model.module if self.args.world_size > 1 else self.model
                 kernel = mode.get_kernel()
                 angle_mean, angle_std = get_angle_loss(kernel)
-                ece = 0*angle_mean + angle_std 
+                ece = angle_mean + angle_std 
                 losses.append(ece*self.args.ece_weight)
                 losses_for_log['ECE'] = ece.detach().cpu().item()
         else:
