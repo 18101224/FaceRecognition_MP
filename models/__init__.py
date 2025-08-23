@@ -1,4 +1,4 @@
-from .ir50 import Backbone as ir50_backbone
+from modules import Backbone as ir50_backbone
 from copy import deepcopy
 from .kp_rpe import *
 import sys
