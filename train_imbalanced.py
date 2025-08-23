@@ -646,13 +646,14 @@ class Trainer:
             if self.args.use_wandb : 
                 wandb.log({'angle_mat': wandb.Image(img_path)})
             time.sleep(30)
-            if os.path.exists(f'checkpoint/{self.id}/angle_mat'):
-                shutil.rmtree(f'checkpoint/{self.id}/angle_mat',ignore_errors=True)
             with open(f'checkpoint/{self.id}/args.json','w') as f :
-                json.dump(_jsonify(vars(self.args)), f, indent=2)   
-        return self.best_acc, self.best_macro_acc
+                json.dump(_jsonify(vars(self.args)), f, indent=2)  
+
+        return self.best_acc, self.best_macro_acc, self.id 
     
 if __name__ == '__main__':
     args = get_args()
     trainer = Trainer(args)
-    best_acc, best_macro_acc = trainer.train()
+    best_acc, best_macro_acc, id = trainer.train()
+    if (args.world_size==1 or args.rank==0) and os.path.exists(f'checkpoint/{id}/angle_mat'):
+        shutil.rmtree(f'checkpoint/{id}/angle_mat',ignore_errors=True)
