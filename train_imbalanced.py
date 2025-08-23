@@ -146,7 +146,7 @@ def get_args():
     args.add_argument('--splitted_contrastive_learning', default=False)
     args.add_argument('--use_mean', default=False)
     # Model checkpoint
-    args.add_argument('--model_type', type=str, choices=['resnet32','resnet50','resnext50','ir50'], default='resnet32')
+    args.add_argument('--model_type', type=str, choices=['resnet32','resnet50','resnext50','ir50','e2_resnet32'], default='resnet32')
     args.add_argument('--feature_branch', default=False)
 
     #dataset information 
