@@ -83,7 +83,7 @@ class E2ResNet32(nn.Module):
         current_type = out_type
         for _ in range(1, num_blocks):
             layers.append(E2BasicBlock(current_type, current_type, stride=1))
-            
+
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor):
@@ -104,7 +104,7 @@ class E2ResNet32(nn.Module):
         out_tensor = out_tensor.view(out_tensor.size(0), -1)  # (B, 256)
         
 
-        return out
+        return out_tensor
 
 # 모델 인스턴스화
 def e2_resnet32(num_classes=10):
