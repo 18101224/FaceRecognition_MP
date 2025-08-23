@@ -50,8 +50,8 @@ class E2ResNet32(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
         
-        # Group space: Rotations by 90 degrees (N=4, group order=4)
-        self.r2_act = gspaces.rot2dOnR2(N=4)
+        # Group space: Rotations by 90 degrees (N=4, group order=4) - 대문자 R로 수정
+        self.r2_act = gspaces.Rot2dOnR2(N=4)
         
         # Input type: 3 trivial representations (RGB channels)
         self.in_type = FieldType(self.r2_act, 3 * [self.r2_act.trivial_repr])
