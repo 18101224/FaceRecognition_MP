@@ -5,7 +5,7 @@ import torch, os
 from copy import deepcopy
 import sys; sys.path.append('..')
 from models import  CosClassifier
-from models.ResNet import resnet32
+from models.modules import resnet32_backbone as resnet32
 
 
 feature_names = ['backbone_feat', 'cls_feat', 'bcl_feat', 'center_feat']
