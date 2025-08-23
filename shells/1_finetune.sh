@@ -2,7 +2,7 @@
 # run_all_cifar100.sh
 
 
-LEARNING_RATES=(0.15 0.1 0.07 0.05)
+LEARNING_RATES=(0.15 0.1 )
 
 make_cmd () {
   local LR=$1
@@ -18,7 +18,7 @@ make_cmd () {
 for LR in "${LEARNING_RATES[@]}"; do
 
   make_cmd "$LR" "--loss=CE --ce_weight=2 --cl_weight=0.6  --cosine_scaling=32  \
-                          --temperature=0.1 --scheduler=warmup" &  
+                          --temperature=0.1 --scheduler=warmup" 
 
   # make_cmd "$LR" "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.3  --cosine_scaling=32  \
   #                         --temperature=0.1 --scheduler=warmup" &  
