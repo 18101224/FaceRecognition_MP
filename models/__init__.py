@@ -1,15 +1,15 @@
 from .modules import Backbone as ir50_backbone
+from .modules import DeepComplexModule, ResidualModule
+from .modules import resnet32_backbone, resnet50_backbone, resnext50_backbone
 from copy import deepcopy
 from .kp_rpe import *
 import sys
 sys.path.extend('..')
 from utils import *
-from .resmodule import Residual
 import torchvision.models as tv_models
-from .resnet_backbone import resnet32_backbone, resnet50_backbone, resnext50_backbone
 from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
-from .feature_module import DeepComplexModule, ResidualModule
+
 
 __all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone']
 
@@ -235,7 +235,7 @@ def get_noise_model(args, pretrained=False):
             backbone=deepcopy(get_kprpe_pretrained(args.kprpe_ckpt_path, token_path=False, force_download=False))
         )
     else:
-        from .resnet_backbone import get_resnet
+        from .modules.resnet_backbone import get_resnet
         backbone = get_resnet(args.architecture, pretrained=pretrained)
         model = CosClassifier(
             num_classes=args.num_classes,
