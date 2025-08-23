@@ -8,7 +8,7 @@ from e2cnn.nn import FieldType
 from e2cnn.nn import GeometricTensor
 from e2cnn.nn.modules.r2_conv import R2Conv
 from e2cnn.nn.modules.equivariant_module import EquivariantModule
-from e2cnn.nn.modules.batchnorm.inner_batchnorm import InnerBatchNorm
+from e2cnn.nn.modules.batchnormalization.inner import InnerBatchNorm
 
 class E2BasicBlock(EquivariantModule):
     def __init__(self, in_type: FieldType, out_type: FieldType, stride: int = 1):
