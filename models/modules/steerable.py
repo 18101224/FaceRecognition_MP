@@ -83,6 +83,7 @@ class E2ResNet32(nn.Module):
         current_type = out_type
         for _ in range(1, num_blocks):
             layers.append(E2BasicBlock(current_type, current_type, stride=1))
+            
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor):

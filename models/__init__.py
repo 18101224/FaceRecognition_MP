@@ -1,6 +1,7 @@
 from .modules import Backbone as ir50_backbone
 from .modules import DeepComplexModule, ResidualModule
 from .modules import resnet32_backbone, resnet50_backbone, resnext50_backbone
+from .modules import e2_resnet32
 from copy import deepcopy
 from .kp_rpe import *
 import sys
@@ -144,13 +145,15 @@ class ImbalancedModel(nn.Module):
         'resnet32': resnet32_backbone,
         'resnet50': partial(resnet50_backbone, pretrained=False),
         'resnext50': partial(resnext50_backbone, pretrained=False),
-        'ir50': partial(ir50_backbone, checkpoint_path='../checkpoint/ir50.pth')
+        'ir50': partial(ir50_backbone, checkpoint_path='../checkpoint/ir50.pth'),
+        'e2_resnet32': e2_resnet32
     }
     dim_dict = {
         'resnet32': (64, 512, 128),
         'resnet50': (2048, 2048, 1024),
         'resnext50': (2048, 2048, 1024),
-        'ir50': (256, 512, 128)
+        'ir50': (256, 512, 128),
+        'e2_resnet32': (256, 256, 128)
     }
     def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False, regular_simplex=False):
         if model_type not in self.model_dict:
