@@ -31,7 +31,7 @@ class E2BasicBlock(EquivariantModule):
     def forward(self, x: GeometricTensor) -> GeometricTensor:
         out = self.conv1(x)
         out = self.bn1(out)
-        out = GeometricTensor(F.relu(out.tensor), self.out_type)  # ReLU 후 re-wrap (v0.2.3 스타일)
+        out = GeometricTensor(F.relu(out.tensor), self.out_type)  # ReLU 후 re-wrap
         
         out = self.conv2(out)
         out = self.bn2(out)
@@ -50,48 +50,56 @@ class E2ResNet32(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
         
-        # Group space: Rotations by 90 degrees (N=4, group order=4) - 대문자 R로 수정
+        # Group space: Rotations by 90 degrees (N=4, group order=4)
         self.r2_act = gspaces.Rot2dOnR2(N=4)
         
-        # Input type: 3 trivial representations (RGB channels)
-        self.in_type = FieldType(self.r2_act, 3 * [self.r2_act.trivial_repr])
+        # Input type: 3 trivial representations (RGB channels) - 초기 input 전용
+        self.input_type = FieldType(self.r2_act, 3 * [self.r2_act.trivial_repr])
+        
+        # Current type 추적용 (overwrite 방지)
+        current_type = self.input_type
         
         # Initial conv: to 16 regular reps (dim=16*4=64)
         feat_type = FieldType(self.r2_act, 16 * [self.r2_act.regular_repr])
-        self.conv1 = R2Conv(self.in_type, feat_type, kernel_size=3, padding=1, stride=1, bias=False)
+        self.conv1 = R2Conv(current_type, feat_type, kernel_size=3, padding=1, stride=1, bias=False)
         self.bn1 = InnerBatchNorm(feat_type)
-        self.in_type = feat_type  # Update in_type
+        current_type = feat_type  # Update current_type
         
         # Layers: 3 groups of 5 BasicBlocks each, channels 16→32→64 (all regular)
-        self.layer1 = self._make_layer(16, 5, stride=1)  # 16 regular (dim=64)
-        self.layer2 = self._make_layer(32, 5, stride=1)  # 32 regular (dim=128)
-        self.layer3 = self._make_layer(64, 5, stride=1)  # 64 regular (dim=256)
+        self.layer1 = self._make_layer(current_type, 16, 5, stride=1)  # 16 regular (dim=64)
+        current_type = self.layer1[-1].out_type  # Update after layer
+        
+        self.layer2 = self._make_layer(current_type, 32, 5, stride=1)  # 32 regular (dim=128)
+        current_type = self.layer2[-1].out_type
+        
+        self.layer3 = self._make_layer(current_type, 64, 5, stride=1)  # 64 regular (dim=256)
+        current_type = self.layer3[-1].out_type  # 최종 256
         
         # Final linear: from 256 dim to num_classes
         self.linear = nn.Linear(256, num_classes)  # 64 multiplicity * 4 = 256
 
-    def _make_layer(self, multiplicity: int, num_blocks: int, stride: int):
+    def _make_layer(self, in_type: FieldType, multiplicity: int, num_blocks: int, stride: int):
         out_type = FieldType(self.r2_act, multiplicity * [self.r2_act.regular_repr])
-        layers = [E2BasicBlock(self.in_type, out_type, stride=stride)]
-        self.in_type = out_type  # Update for next layer
+        layers = [E2BasicBlock(in_type, out_type, stride=stride)]
+        current_type = out_type
         for _ in range(1, num_blocks):
-            layers.append(E2BasicBlock(out_type, out_type, stride=1))
+            layers.append(E2BasicBlock(current_type, current_type, stride=1))
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor):
-        # Wrap input as GeometricTensor
-        x = GeometricTensor(x, self.in_type)
+        # Wrap input as GeometricTensor (초기 input_type 사용)
+        x = GeometricTensor(x, self.input_type)
         
         out = self.conv1(x)
         out = self.bn1(out)
-        out = GeometricTensor(F.relu(out.tensor), self.in_type)
+        out = GeometricTensor(F.relu(out.tensor), out.type)
         
         out = self.layer1(out)
         out = self.layer2(out)
         out = self.layer3(out)
         
         # Adaptive pooling to handle any resolution (e.g., 32x32 → 1x1)
-        out_tensor = out.tensor  # (B, 256, H, W)  # dim=256 (64*4)
+        out_tensor = out.tensor  # (B, 256, H, W)
         out_tensor = F.adaptive_avg_pool2d(out_tensor, (1, 1))  # (B, 256, 1, 1)
         out_tensor = out_tensor.view(out_tensor.size(0), -1)  # (B, 256)
         
@@ -105,7 +113,6 @@ def e2_resnet32(num_classes=10):
 # 테스트 함수
 def test():
     model = e2_resnet32()
-    # 32x32 입력 테스트
     x = torch.randn(1, 3, 32, 32)
     y = model(x)
     print(y.shape)  # torch.Size([1, 10])
