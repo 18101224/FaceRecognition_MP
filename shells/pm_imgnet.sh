@@ -6,7 +6,7 @@
 #SBATCH -N 1
 #SBATCH -t 00:10:00
 #SBATCH --gpus-per-node=4
-#SBATCH --ntasks-per-node=3
+#SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=16
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
