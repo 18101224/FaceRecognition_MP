@@ -1,38 +1,60 @@
 #!/bin/bash
-
-#SBATCH -A m1248_g
-#SBATCH -J hcir_multi_exp
+#SBATCH -J hcir_cifar
+#SBATCH -A m1248_g 
+#SBATCH -q debug
+#SBATCH -C gpu
 #SBATCH -N 1
+#SBATCH -t 00:10:00
 #SBATCH --gpus-per-node=4
-#SBATCH -t 24:00:00
-#SBATCH -o logs/latest.log
-#SBATCH -e logs/latest_error.log
+#SBATCH --ntasks-per-node=3
+#SBATCH --cpus-per-task=16
+#SBATCH --output=slurm-%x-%j.out
+#SBATCH --error=slurm-%x-%j.err
 #SBATCH --mail-user=alswo01287@naver.com
 #SBATCH --mail-type=ALL
-#SBATCH -C gpu&hbm80g
-#SBATCH -q regular
-
-LRS=(0.1 0.1 0.05 0.05)
-LOSSES=(CE_BCL CE_ECE_BCL CE_BCL CE_ECE_BCL)
-PORTS=(39500 39501 39502 39503)
 
 source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
-conda activate /pscratch/sd/s/sgkim/hcir/cv
-export URL="https://api.pushover.net/1/messages.json"
-export alarm_user="u2258jmd7zfuqh7r3ap4rx9bo6szh9"
-export alarm_app="a8ekwdu7tj37drid8o5q6sudd5f6ed"
+conda activate /pscratch/sd/s/sgkim/hcir/cv 
 
-for IDX in 0 1 2 3
-do
-  LR=${LRS[$IDX]}
-  LOSS=${LOSSES[$IDX]}
-  CUDA_VISIBLE_DEVICES=$IDX \
-  python train_imbalanced.py \
-    --learning_rate=$LR --batch_size=256 --n_epochs=90 --weight_decay=5e-4 \
-    --wandb_token=../wandb.txt --server=pm --dataset_name=imagenet_lt --dataset_path=../data/imgnet \
-    --cosine_scaling=32 --cosine_constant_margin=0.5 --model_type=resnet50 --loss=$LOSS --aug=True \
-    --randaug_n=2 --randaug_m=10 --use_warmup=True --ce_weight=2 --cl_weight=0.6 --ece_weight=1 --cutout=True --ece_scheduling=cosine \
-    > logs/latest_$IDX.log 2> logs/latest_error_$IDX.log &
+
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
+export MKL_NUM_THREADS=${OMP_NUM_THREADS}
+export OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS}
+
+LEARNING_RATES=(0.15 0.1 )
+
+make_cmd () {
+
+  local EXTRA=$1        # loss·weight·스케줄 인자 묶음
+  python3 train_imbalanced.py \
+        --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
+        --cos=True --momentum=0.9 --world_size=1 --wandb_token=../wandb.txt \
+        --model_type=e2_resnet32  --imb_type=exp --imb_factor=0.01 \
+        --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True  --regular_simplex=True --feature_module=deepcomplex_3 --use_tf=True \
+         --cosine_scaling=32   --temperature=0.1 --scheduler=warmup $EXTRA
+}
+
+
+for lr in 0.1 0.15; do
+  srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ece_weight=1.2 '" &  
+
+  srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ece_weight=1 '" &  
+
+  srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ece_weight=0.3'" &  
+                          
+  srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ece_weight=0.5'" &  
+
+  wait
 done
+
 wait
 
+srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.1 --dataset_name=cifar10 --loss=BCL '" &  
+
+srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.15 --dataset_name=cifar10 --loss=BCL '" &  
+
+srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.1 --dataset_name=cifar10 --loss=CE '" &  
+                        
+srun --exclusive -N1 -n1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.15 --dataset_name=cifar10 --loss=CE '" &  
+
+wait
