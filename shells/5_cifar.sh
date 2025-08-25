@@ -1,7 +1,7 @@
 make_cmd () {
 
   local EXTRA=$1        # loss·weight·스케줄 인자 묶음
-  torchrun --nproc_per_node=2  train_imbalanced.py --world_size=2 \
+  torchrun --nproc_per_node=3  train_imbalanced.py --world_size=3 \
         --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
         --cos=True --momentum=0.9 --world_size=1 --wandb_token=../wandb.txt \
         --model_type=e2_resnet32  --imb_type=exp --imb_factor=0.01 \
