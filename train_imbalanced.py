@@ -204,6 +204,7 @@ def include(loss, loss_names):
             if loss_name == loss : 
                 return True 
     return False 
+
 def get_losses(loss):
     losses = list(loss.split('_'))
     if 'CE' not in losses:
