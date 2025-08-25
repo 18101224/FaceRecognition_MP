@@ -10,6 +10,8 @@ from e2cnn.nn.modules.r2_conv import R2Conv
 from e2cnn.nn.modules.equivariant_module import EquivariantModule
 from e2cnn.nn.modules.batchnormalization.inner import InnerBatchNorm  # v0.2.3 호환
 
+__all__ = ['e2_resnet32', 'e2_resnext50']
+
 class E2BasicBlock(EquivariantModule):
     def __init__(self, in_type: FieldType, out_type: FieldType, stride: int = 1):
         super().__init__()
@@ -109,6 +111,107 @@ class E2ResNet32(nn.Module):
 # 모델 인스턴스화
 def e2_resnet32(num_classes=10):
     return E2ResNet32(num_classes)
+
+# Bottleneck block for ImageNet-scale steerable ResNe(x)t
+class E2Bottleneck(EquivariantModule):
+    def __init__(self, in_type: FieldType, bottleneck_mult: int, out_mult: int, stride: int = 1):
+        super().__init__()
+        self.in_type = in_type
+        gspace = in_type.gspace
+        bottleneck_type = FieldType(gspace, bottleneck_mult * [gspace.regular_repr])
+        out_type = FieldType(gspace, out_mult * [gspace.regular_repr])
+
+        self.conv1 = R2Conv(in_type, bottleneck_type, kernel_size=1, padding=0, stride=1, bias=False)
+        self.bn1 = InnerBatchNorm(bottleneck_type)
+
+        self.conv2 = R2Conv(bottleneck_type, bottleneck_type, kernel_size=3, padding=1, stride=stride, bias=False)
+        self.bn2 = InnerBatchNorm(bottleneck_type)
+
+        self.conv3 = R2Conv(bottleneck_type, out_type, kernel_size=1, padding=0, stride=1, bias=False)
+        self.bn3 = InnerBatchNorm(out_type)
+
+        self.shortcut = None
+        if in_type.size != out_type.size or stride != 1:
+            self.shortcut = R2Conv(in_type, out_type, kernel_size=1, padding=0, stride=stride, bias=False)
+
+        self.out_type = out_type
+
+    def forward(self, x: GeometricTensor) -> GeometricTensor:
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = GeometricTensor(F.relu(out.tensor), out.type)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = GeometricTensor(F.relu(out.tensor), out.type)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        shortcut = x if self.shortcut is None else self.shortcut(x)
+        out = GeometricTensor(out.tensor + shortcut.tensor, self.out_type)
+        out = GeometricTensor(F.relu(out.tensor), self.out_type)
+        return out
+
+    def evaluate_output_shape(self, input_shape):
+        return input_shape
+
+class E2ResNeXt50(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.r2_act = gspaces.Rot2dOnR2(N=4)
+
+        self.input_type = FieldType(self.r2_act, 3 * [self.r2_act.trivial_repr])
+
+        stem_mult = 16  # 16 * 4 = 64 channels
+        stem_type = FieldType(self.r2_act, stem_mult * [self.r2_act.regular_repr])
+        self.conv1 = R2Conv(self.input_type, stem_type, kernel_size=7, padding=3, stride=2, bias=False)
+        self.bn1 = InnerBatchNorm(stem_type)
+
+        current_type = stem_type
+
+        # ResNe(x)t-50 layers: [3, 4, 6, 3] with output channels [256, 512, 1024, 2048]
+        self.layer1 = self._make_layer(current_type, bottleneck_mult=16, out_mult=64, num_blocks=3, stride=1)
+        current_type = self.layer1[-1].out_type
+
+        self.layer2 = self._make_layer(current_type, bottleneck_mult=32, out_mult=128, num_blocks=4, stride=2)
+        current_type = self.layer2[-1].out_type
+
+        self.layer3 = self._make_layer(current_type, bottleneck_mult=64, out_mult=256, num_blocks=6, stride=2)
+        current_type = self.layer3[-1].out_type
+
+        self.layer4 = self._make_layer(current_type, bottleneck_mult=128, out_mult=512, num_blocks=3, stride=2)
+        self.out_type = self.layer4[-1].out_type  # 512 * 4 = 2048 channels
+
+    def _make_layer(self, in_type: FieldType, bottleneck_mult: int, out_mult: int, num_blocks: int, stride: int):
+        layers = [E2Bottleneck(in_type, bottleneck_mult=bottleneck_mult, out_mult=out_mult, stride=stride)]
+        current_type = layers[-1].out_type
+        for _ in range(1, num_blocks):
+            layers.append(E2Bottleneck(current_type, bottleneck_mult=bottleneck_mult, out_mult=out_mult, stride=1))
+            current_type = layers[-1].out_type
+        return nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor):
+        x = GeometricTensor(x, self.input_type)
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = GeometricTensor(F.relu(out.tensor), out.type)
+
+        pooled = F.max_pool2d(out.tensor, kernel_size=3, stride=2, padding=1)
+        out = GeometricTensor(pooled, out.type)
+
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+
+        out_tensor = out.tensor
+        out_tensor = F.adaptive_avg_pool2d(out_tensor, (1, 1))
+        out_tensor = out_tensor.view(out_tensor.size(0), -1)  # (B, 2048)
+        return out_tensor
+
+def e2_resnext50():
+    return E2ResNeXt50()
 
 # 테스트 함수
 def test():
