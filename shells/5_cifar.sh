@@ -12,9 +12,7 @@ make_cmd () {
 
 for weight in 0.3 0.5 1; do
 
-  CUDA_VISIBLE_DEVICES=2,3  make_cmd  "--learning_rate=0.15 --dataset_name=cifar10  --loss=BCL_ECE --ece_weight=$weight " 
-
-
+  CUDA_VISIBLE_DEVICES=1,2,3  make_cmd  "--learning_rate=0.15 --dataset_name=cifar10  --loss=BCL_ECE --ece_weight=$weight " 
 
   wait
 done
