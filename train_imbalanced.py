@@ -533,7 +533,6 @@ class Trainer:
         """Synchronize tensor across all processes"""
         if self.args.world_size > 1:
             dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
-            tensor = tensor / self.args.world_size
         return tensor
     
     @torch.no_grad()
