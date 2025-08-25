@@ -23,13 +23,13 @@ wait
 
 for LR in "${LEARNING_RATES[@]}"; do
 
-  make_cmd 0.15 "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.3" &
+  make_cmd $LR "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.3" &
 
-  make_cmd 0.1 "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.5" &
+  make_cmd $LR "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.5" &
 
-  make_cmd 0.1 "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1" &
+  make_cmd $LR "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1" &
   
-  make_cmd 0.1 "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.1" &
+  make_cmd $LR "--loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.1" &
 
   wait
           # ---- 네 개 모두 종료될 때까지 대기 ----
