@@ -99,3 +99,4 @@ wait
 
 node1_run $NODE1 $SLURM_CPUS_PER_TASK &
 node2_run $NODE2 $SLURM_CPUS_PER_TASK &
+wait
