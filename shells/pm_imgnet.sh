@@ -21,8 +21,6 @@ export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 export MKL_NUM_THREADS=${OMP_NUM_THREADS}
 export OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS}
 
-export WANDB_API_KEY=$(cat ../wandb.txt)
-
 NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
 NODE1=$(echo "$NODELIST" | sed -n '1p')
 NODE2=$(echo "$NODELIST" | sed -n '2p')
@@ -34,7 +32,7 @@ make_cmd () {
   local EXTRA=$1        # loss·weight·스케줄 인자 묶음
   python3 train_imbalanced.py \
         --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
-        --cos=True --momentum=0.9 --world_size=1 \
+          --cos=True --momentum=0.9 --world_size=1 \  
         --model_type=e2_resnet32  --imb_type=exp --imb_factor=0.01 \
         --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True \
          --cosine_scaling=32    --temperature=0.1 --scheduler=warmup $EXTRA

@@ -134,7 +134,6 @@ def get_args():
     
 
     # Logging and saving
-    args.add_argument('--wandb_token', type=str,)
     args.add_argument('--use_wandb', default=False)
 
     # Research hyperparameters
@@ -378,23 +377,9 @@ class Trainer:
         print(f'num_classes: {len(self.validation_class_dist)}')
 
     def _init_wandb(self):
-        token_path = getattr(self.args, 'wandb_token', None)
-        if not os.environ.get('WANDB_API_KEY') and token_path:
-            try:
-                with open(token_path, 'r') as f:
-                    api_key = f.readline().strip()
-                if api_key:
-                    os.environ['WANDB_API_KEY'] = api_key
-            except Exception:
-                pass
-        try:
-            wandb.login()
-        except Exception:
-            pass
-    # INSERT_YOUR_CODE
+        wandb.login()
         import uuid 
         self.wandb_id = str(uuid.uuid4())
-        
         wandb.init(
             project=f'{self.args.dataset_name} Training',
             name=self.id,
