@@ -210,17 +210,26 @@ class Trainer :
                 os.makedirs(f'checkpoint/{self.id}',exist_ok=True)
 
     def _init_wandb(self):
-        if self.args.wandb_token:
-            with open(self.args.wandb_token, 'r') as f:
-                token = f.readline().strip()
-            wandb.login(key=token)
-            wandb.init(
-                project=f'OOS-target_train-{self.args.dataset_name}',
-                name=str(self.id),
-                config=self.args,
-                id=self.id,
-                resume='allow'
-            )
+        token_path = getattr(self.args, 'wandb_token', None)
+        if not os.environ.get('WANDB_API_KEY') and token_path:
+            try:
+                with open(token_path, 'r') as f:
+                    api_key = f.readline().strip()
+                if api_key:
+                    os.environ['WANDB_API_KEY'] = api_key
+            except Exception:
+                pass
+        try:
+            wandb.login()
+        except Exception:
+            pass
+        wandb.init(
+            project=f'OOS-target_train-{self.args.dataset_name}',
+            name=str(self.id),
+            config=self.args,
+            id=self.id,
+            resume='allow'
+        )
     
 
     def run_train_forward(self,img,label,ldmk,c):

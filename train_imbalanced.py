@@ -30,8 +30,6 @@ torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 torch.cuda.manual_seed_all(42)  
     
-
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
 def _jsonify(obj):
@@ -380,11 +378,19 @@ class Trainer:
         print(f'num_classes: {len(self.validation_class_dist)}')
 
     def _init_wandb(self):
-
-        with open(self.args.wandb_token, 'r') as f:
-            token = f.readline().strip()
-        wandb.login(key=token)
-
+        token_path = getattr(self.args, 'wandb_token', None)
+        if not os.environ.get('WANDB_API_KEY') and token_path:
+            try:
+                with open(token_path, 'r') as f:
+                    api_key = f.readline().strip()
+                if api_key:
+                    os.environ['WANDB_API_KEY'] = api_key
+            except Exception:
+                pass
+        try:
+            wandb.login()
+        except Exception:
+            pass
     # INSERT_YOUR_CODE
         import uuid 
         self.wandb_id = str(uuid.uuid4())
