@@ -35,7 +35,7 @@ make_cmd () {
         --batch_size=256 --n_epochs=90 --weight_decay=5e-4 \
           --cos=True --momentum=0.9 \
         --model_type=resnext50  --imb_type=exp --imb_factor=0.01 \
-        --dataset_path=../data/imgnet --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True \
+        --dataset_path=../data/imgnet --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True --num_workers=16 \
         --cosine_scaling=32    --temperature=0.1 --scheduler=cosine $EXTRA
 }
 
