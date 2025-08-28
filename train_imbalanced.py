@@ -279,7 +279,7 @@ class Trainer:
         self.model = self.model.to(self.device)
         
         if args.world_size > 1:
-            self.model = DDP(self.model, device_ids=[args.local_rank])
+            self.model = DDP(self.model, device_ids=[args.local_rank],find_unused_parameters=True)
         
         # Initialize optimizer and scheduler
         self.optimizer = get_optimizer(args, self.model)
