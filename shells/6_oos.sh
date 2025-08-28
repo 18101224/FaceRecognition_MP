@@ -2,7 +2,7 @@
 
 for datasetname in cifar100 cifar10 ; do
 	for lr in 0.15 0.1 ; do
-		CUDA_VISIBLE_DEVICES=1,2 torchrun --nproc_per_node=2 train_imbalanced.py --world_size=2 \
+		CUDA_VISIBLE_DEVICES=1,2 /home/gpuadmin/anaconda3/envs/main/bin/torchrun --nproc_per_node=2 train_imbalanced.py --world_size=2 \
 			--batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
 			--cos=True --momentum=0.9 \
 			--model_type=e2_resnet32 --imb_type=exp --imb_factor=0.01 \
