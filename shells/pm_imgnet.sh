@@ -41,26 +41,16 @@ make_cmd () {
 node1_run () {
   local NODE1=$1 SLURM_CPUS_PER_TASK=$2
   for lr in 0.15 0.1 ; do
-  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1.2 '" &  
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1.2 '" &  
 
-  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1 '" &  
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1 '" &  
 
-  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.3'" &  
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.3'" &  
                           
-  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.5'" &  
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.5'" &  
 
   wait
 done
-
-wait
-
-srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.1 --dataset_name=cifar100 --ce_weight=2 --cl_weight=0.6 --loss=BCL '" &  
-
-srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.15 --dataset_name=cifar100 --ce_weight=2 --cl_weight=0.6 --loss=BCL '" &  
-
-srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.1 --dataset_name=cifar100 --ce_weight=1 --loss=CE '" &  
-                        
-srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.15 --dataset_name=cifar100 --ce_weight=1 --loss=CE '" &  
 
 wait
 
@@ -70,32 +60,68 @@ wait
 node2_run () {
 local NODE2=$1 SLURM_CPUS_PER_TASK=$2
 for lr in 0.15 0.1 ; do
-  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1.2 '" &  
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1.2 '" &  
 
-  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=1 '" &  
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1 '" &  
 
-  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.3'" &  
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.3'" &  
                           
-  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=2 --cl_weight=0.6 --ece_weight=0.5'" &  
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.5'" &  
 
   wait
 done
 
 wait
 
-srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.1 --dataset_name=cifar10 --ce_weight=2 --cl_weight=0.6 --loss=BCL '" &  
-
-srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.15 --dataset_name=cifar10 --ce_weight=2 --cl_weight=0.6 --loss=BCL '" &  
-
-srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.1 --dataset_name=cifar10 --ce_weight=1 --loss=CE '" &  
-                        
-srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=0.15 --dataset_name=cifar10 --ce_weight=1 --loss=CE '" &  
-
-wait
-
 
 }
 # node1
+
+node1_run $NODE1 $SLURM_CPUS_PER_TASK &
+node2_run $NODE2 $SLURM_CPUS_PER_TASK &
+wait
+
+make_cmd () {
+
+  local EXTRA=$1        # loss·weight·스케줄 인자 묶음
+  python3 train_imbalanced.py \
+        --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
+          --cos=True --momentum=0.9 --world_size=1 \
+        --model_type=e2_resnet32  --imb_type=exp --imb_factor=0.01 \
+        --dataset_path=../data --aug=True --cutout=True  --feature_branch=True --use_tf=True \
+         --cosine_scaling=32    --temperature=0.1 --scheduler=warmup $EXTRA
+}
+node1_run () {
+  local NODE1=$1 SLURM_CPUS_PER_TASK=$2
+  for lr in 0.15 0.1 ; do
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1.2 '" &  
+
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1 '" &  
+
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.3'" &  
+                          
+  srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar100 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.5'" &  
+
+  wait
+done
+wait
+}
+
+node2_run () {
+local NODE2=$1 SLURM_CPUS_PER_TASK=$2
+for lr in 0.15 0.1 ; do
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1.2 '" &  
+
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:0 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=1 '" &  
+
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.3'" &  
+                          
+  srun --exclusive -N1 -n1 -w $NODE2 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=1 --gpu-bind=map_gpu:2 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=cifar10 --use_mean=True --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.5'" &  
+
+  wait
+done
+wait
+}
 
 node1_run $NODE1 $SLURM_CPUS_PER_TASK &
 node2_run $NODE2 $SLURM_CPUS_PER_TASK &
