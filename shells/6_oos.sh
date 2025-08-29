@@ -10,7 +10,7 @@ for datasetname in cifar100 cifar10 ; do
 			--feature_branch=True --use_tf=True --num_workers=16 \
 			--cosine_scaling=32 --temperature=0.1 --scheduler=warmup \
 			--learning_rate=$lr --dataset_name=$datasetname --use_mean=True \
-			--loss=BCL --ce_weight=1 --cl_weight=1
+			--loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.3
 		wait 
 	done 
 	wait 
