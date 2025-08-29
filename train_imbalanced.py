@@ -10,7 +10,7 @@ from models import ImbalancedModel
 from collections import Counter
 from torch.optim import SGD
 from Loss.Imbalanced import get_angle_loss, BCLLoss, weight_scheduling
-from dataset import get_cifar_dataset, get_transform, Large_dataset, FER
+from dataset import get_cifar_dataset, get_transform, Large_dataset, FER, ImbalancedDatasetSampler, DistributedSamplerWrapper
 from utils import get_exp_id
 from analysis import plot_angle_matrix
 import numpy as np
@@ -153,6 +153,7 @@ def get_args():
     # Model checkpoint
     args.add_argument('--model_type', type=str, choices=['resnet32','resnet50','resnext50','ir50','e2_resnet32','e2_resnext50'], default='resnet32')
     args.add_argument('--feature_branch', default=False)
+    args.add_argument('--use_sampler', default=False)
 
     #dataset information 
     args.add_argument('--dataset_name',type=str,choices=['cifar100','svhn','cifar10','imagenet_lt','inat','RAF-DB','AffectNet'])
@@ -243,9 +244,17 @@ class Trainer:
         
         # Create samplers for distributed training
         if args.world_size > 1 :
-            self.train_sampler = DistributedSampler(self.train_dataset, shuffle=True)
+            if args.use_sampler :
+                train_sampler = ImbalancedDatasetSampler(self.train_dataset,labels=self.train_dataset.labels,)
+                self.train_sampler = DistributedSamplerWrapper(train_sampler, shuffle=True)
+            else : 
+                self.train_sampler = DistributedSampler(self.train_dataset, shuffle=True)
+
         else:
-            self.train_sampler = None
+            if args.use_sampler :
+                self.train_sampler = ImbalancedDatasetSampler(self.train_dataset,labels=self.train_dataset.labels,)
+            else : 
+                self.train_sampler = None
         self.test_sampler = DistributedSampler(self.test_dataset, shuffle=False) if args.world_size > 1 else None
         
         # Create dataloaders
