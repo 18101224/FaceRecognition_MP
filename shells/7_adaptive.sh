@@ -43,6 +43,6 @@ gpu1 (){
   done
 }
 
-gpu0()  &;
-gpu1()  &;
+gpu0 &
+gpu1 &
 wait
