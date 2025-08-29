@@ -32,11 +32,11 @@ gpu1 (){
   for dataset in cifar100 cifar10 ; do
     for lr in 0.1 0.15; do
 
-      CUDA_VISIBLE_DEVICES=1 make_cmd  "--learning_rate=$lr --dataset_name=$dataset  --loss=BCL --ce_weight=2 --cl_weight=0.6" &
+      CUDA_VISIBLE_DEVICES=2 make_cmd  "--learning_rate=$lr --dataset_name=$dataset  --loss=BCL --ce_weight=2 --cl_weight=0.6" &
 
-      CUDA_VISIBLE_DEVICES=1 make_cmd  "--learning_rate=$lr --dataset_name=$dataset  --loss=BCL " &
+      CUDA_VISIBLE_DEVICES=2 make_cmd  "--learning_rate=$lr --dataset_name=$dataset  --loss=BCL " &
 
-      CUDA_VISIBLE_DEVICES=1 make_cmd  "--learning_rate=$lr --dataset_name=$dataset  --loss=BCL_ECE --ece_weight=0.3 " &
+      CUDA_VISIBLE_DEVICES=2 make_cmd  "--learning_rate=$lr --dataset_name=$dataset  --loss=BCL_ECE --ece_weight=0.3 " &
     wait 
     done
     wait
