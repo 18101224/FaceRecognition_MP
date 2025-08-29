@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=0 python3 train_imbalanced.py --gamma=0.1 --learning_rate=1e-5 --batch_size=256 --n_epochs=200 --scheduler=cosine --weight_decay=1e-4 --cos=True --world_size=1 \
+                            --use_tf=True --num_workers=16 --use_wandb=True --cosine_scaling=16 --use_sampler=True --loss=CE --dataset_path=../data/RAF-DB --model_type=ir50 --dataset_name=RAF-DB --aug=True --cutout=True 
