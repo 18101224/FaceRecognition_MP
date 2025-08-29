@@ -246,15 +246,22 @@ def adjust_learning_rate(optimizer, epoch, scheduler, args):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
         return lr 
+    elif ('RAF' in args.dataset_name or 'AffectNet' in args.dataset_name):
+        scheduler.step()
+        return scheduler.get_last_lr()[0]
     else:
-        raise ValueError(f'Scheduler {args.scheduler} is not supported for {args.dataset_name}')
+        raise ValueError(f'Scheduler {args.scheduler} is not supported for {args.dataset_name}')    
     
 def get_scheduler(args, optimizer):
     if 'cifar' in args.dataset_name :
         from opt.cifar import get_scheduler
         return get_scheduler(args, optimizer)
-    else:
+    elif 'imagenet_lt' in args.dataset_name or 'inat' in args.dataset_name:
         return None
+    elif ('RAF' in args.dataset_name or 'AffectNet' in args.dataset_name):
+        return torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98)
+    else:
+        raise ValueError(f'Scheduler {args.scheduler} is not supported for {args.dataset_name}')
     
 def get_optimizer(args, model):
     if 'cifar' in args.dataset_name or 'imagenet_lt' in args.dataset_name or 'inat' in args.dataset_name:
