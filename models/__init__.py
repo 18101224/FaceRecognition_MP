@@ -145,7 +145,7 @@ class ImbalancedModel(nn.Module):
         'resnet32': resnet32_backbone,
         'resnet50': partial(resnet50_backbone, pretrained=False),
         'resnext50': partial(resnext50_backbone, pretrained=False),
-        'ir50': partial(ir50_backbone, checkpoint_path='../checkpoint/ir50.pth'),
+        'ir50': partial(ir50_backbone, checkpoint_path='checkpoint/ir50.pth'),
         'e2_resnet32': e2_resnet32,
         'e2_resnext50': e2_resnext50
     }
