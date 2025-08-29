@@ -239,8 +239,15 @@ def adjust_learning_rate(optimizer, epoch, scheduler, args):
     if 'cifar' in args.dataset_name :
         from opt.cifar import adjust_learning_rate
         return adjust_learning_rate(optimizer, epoch, scheduler, args)
+    elif ('imagenet_lt' in args.dataset_name or 'inat' in args.dataset_name) and args.scheduler == 'cosine':
+        lr = args.learning_rate
+        warmup_epochs = 5
+        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - warmup_epochs + 1) / (args.n_epochs - warmup_epochs + 1)))
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+        return lr 
     else:
-        return None
+        raise ValueError(f'Scheduler {args.scheduler} is not supported for {args.dataset_name}')
     
 def get_scheduler(args, optimizer):
     if 'cifar' in args.dataset_name :
@@ -254,3 +261,5 @@ def get_optimizer(args, model):
         return torch.optim.SGD(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
     else:
         return SAM(params=model.parameters(), base_optimizer=torch.optim.AdamW, rho=0.05, adaptive=True, lr=args.learning_rate, weight_decay=args.weight_decay)
+    
+
