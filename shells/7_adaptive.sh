@@ -9,7 +9,7 @@ make_cmd () {
         --cos=True --momentum=0.9 --world_size=1  \
         --model_type=resnet32  --imb_type=exp --imb_factor=0.01 \
         --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True  --use_tf=True \
-         --cosine_scaling=32   --temperature=0.1 --scheduler=warmup $EXTRA
+         --cosine_scaling=32 --temperature=0.1 --scheduler=warmup --num_workers=16 $EXTRA
 }
 
 gpu0 (){
