@@ -200,8 +200,8 @@ class ImbalancedModel(nn.Module):
         logit = z_ @ weight
 
         if features : 
-            centers = nn.functional.normalize(self.head_fc(weight.T), dim=-1)
-            processed_feat = nn.functional.normalize(self.head(z_), dim=-1)
+            centers = nn.functional.normalize(self.head_fc(weight.T), dim=-1) if self.feature_branch else weight.T
+            processed_feat = nn.functional.normalize(self.head(z_), dim=-1) if self.feature_branch else z_
             return processed_feat, logit, centers 
         else:
             return logit 
