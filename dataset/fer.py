@@ -40,7 +40,7 @@ class FER(Dataset):
             paths = sorted(glob(f'{self.root}/{post}/{i+offset}/*'))
             self.paths += paths 
             self.labels += [i]*len(paths)
-        self.labels = np.array(self.labels,dtype=np.long)
+        self.labels = np.array(self.labels,dtype=np.int64)
         self.img_num_list = None 
         self.get_img_num_per_cls()
         self.idx = idx 
