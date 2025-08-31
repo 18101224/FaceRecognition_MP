@@ -6,7 +6,7 @@
 #SBATCH -t 48:00:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 #SBATCH --mail-user=alswo01287@naver.com
@@ -34,7 +34,7 @@ make_cmd () {
         --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
           --cos=True --momentum=0.9 --world_size=1 \
         --model_type=resnet32  --imb_type=exp --imb_factor=0.01 \
-        --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True --num_workers=16\
+        --dataset_path=../data --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True --num_workers=16 \
          --cosine_scaling=32    --temperature=0.1 --scheduler=warmup $EXTRA
 }
 
