@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J hcir_cifar
 #SBATCH -A m1248_g 
-#SBATCH -q debug
+#SBATCH -q shared
 #SBATCH -N 1
-#SBATCH -t 00:05:00
+#SBATCH -t 48:00:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
