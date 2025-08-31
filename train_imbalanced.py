@@ -24,11 +24,11 @@ import time
 from torch.profiler import profile, schedule, ProfilerActivity
 import random
 
-random.seed(42)
-np.random.seed(42)
-torch.manual_seed(42)
-torch.cuda.manual_seed(42)
-torch.cuda.manual_seed_all(42)  
+# random.seed(42)
+# np.random.seed(42)
+# torch.manual_seed(42)
+# torch.cuda.manual_seed(42)
+# torch.cuda.manual_seed_all(42)  
     
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
@@ -89,21 +89,33 @@ def get_dataset(args, train:bool):
 
     
 def get_model(args):
-    if 'cifar' in args.dataset_name:
-        n_c = 100 if '100' in args.dataset_name else 10
-        model = ImbalancedModel(num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
-        return model
-    elif 'imagenet_lt' == args.dataset_name:
-        model = ImbalancedModel(num_classes=1000, model_type=args.model_type)
-        return model
-    elif 'inat' == args.dataset_name:
-        model = ImbalancedModel(num_classes=8142, model_type=args.model_type)
-        return model
-    elif 'RAF-DB' == args.dataset_name or 'AffectNet' == args.dataset_name:
-        model = ImbalancedModel(num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
-        return model
+    if include('NCL', args.loss):
+        if 'cifar' in args.dataset_name : 
+            n_c = 100 if '100' in args.dataset_name else 10
+            from models import Combiner, multi_network_MOCO
+            model = {'comb': Combiner(args,n_c), 'model': multi_network_MOCO(args,num_classes=n_c, mode='train')}
+
+        else:
+            n_c = 1000 if '1000' in args.dataset_name else 8142
+            from models import Combiner, multi_network
+            model = {'comb': Combiner(args,n_c), 'model': multi_network(args,num_classes=n_c, mode='train')}
+        return model 
     else:
-        raise ValueError(f'Dataset {args.dataset_name} not supported')
+        if 'cifar' in args.dataset_name:
+            n_c = 100 if '100' in args.dataset_name else 10
+            model = ImbalancedModel(num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+            return model
+        elif 'imagenet_lt' == args.dataset_name:
+            model = ImbalancedModel(num_classes=1000, model_type=args.model_type)
+            return model
+        elif 'inat' == args.dataset_name:
+            model = ImbalancedModel(num_classes=8142, model_type=args.model_type)
+            return model
+        elif 'RAF-DB' == args.dataset_name or 'AffectNet' == args.dataset_name:
+            model = ImbalancedModel(num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+            return model
+        else:
+            raise ValueError(f'Dataset {args.dataset_name} not supported')
 
 
 def get_args():
