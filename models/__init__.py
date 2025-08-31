@@ -2,7 +2,7 @@ from .modules import Backbone as ir50_backbone
 from .modules import DeepComplexModule, ResidualModule
 from .modules import resnet32_backbone, resnet50_backbone, resnext50_backbone
 from .modules import e2_resnet32, e2_resnext50
-from .modules import Combiner, multi_network, multi_network_MOCO
+#from .modules import Combiner, multi_network, multi_network_MOCO
 from copy import deepcopy
 from .kp_rpe import *
 import sys
@@ -13,7 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
 
 
-__all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone', 'Combiner', 'multi_network', 'multi_network_MOCO']
+__all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone',]
 
 
 class kprpe_fer(nn.Module):
