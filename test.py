@@ -1,80 +1,159 @@
+
+from torchvision.models import ResNet50_Weights, ResNeXt50_32X4D_Weights, ResNet34_Weights
+from torchvision.models.resnet import ResNet, BasicBlock, Bottleneck
+from torch import Tensor 
 import torch 
-from tqdm import tqdm 
-from functools import partial
-import numpy as np 
-import matplotlib.pyplot as plt 
+import torch.nn as nn 
+import torch.nn.functional as F 
 
-dim = 9
-n_c = 10 
+__all__ = ['resnet34_backbone', 'resnet50_backbone', 'resnext50_backbone', 'resnet32_backbone', 'get_resnet']
 
-weight = torch.randn((n_c,dim),requires_grad=True,device=torch.device('mps'))
-norm = partial(torch.nn.functional.normalize, dim=1, p=2)
-opt = torch.optim.SGD([weight], lr=100)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10000, eta_min=0.000001)
-means = []
-stds = []
+class LambdaLayer(nn.Module):
+    def __init__(self, lambd):
+        super(LambdaLayer, self).__init__()
+        self.lambd = lambd
 
-for i in tqdm(range(10000)):
-    opt.zero_grad()
-    w = norm(weight)
-    sim = w@w.T
-    indices = torch.triu_indices(n_c, n_c, offset=1)
-    sims = sim[indices[0],indices[1]]
-    s = ((-1-sim.reshape(-1))**2).mean()
-    std = torch.abs(sim.reshape(-1)-s).mean()
-    means.append(s.detach().cpu().item())
-    stds.append(std.detach().cpu().item())
-    loss = s+std*2
-    loss.backward()
-    opt.step()
-    scheduler.step()
-    if i%100==0:
-        with torch.no_grad():
-            sim = norm(weight) @ norm(weight).T
-            # Clamp values to valid range for arccos to avoid numerical errors
-            sim_clamped = sim.clamp(-1.0, 1.0)
-            angles = torch.acos(sim_clamped) * 180.0 / torch.pi  # Convert radians to degrees
-            indices = torch.triu_indices(n_c, n_c, offset=1)
-            upper_tri = angles[indices[0],indices[1]]
-            upper_tri_mean = upper_tri.mean().item()
-            upper_tri_std = upper_tri.std().item()
-            print(f'upper triangle mean (no diag): {upper_tri_mean:.4f}, std: {upper_tri_std:.4f}')
-
-means = np.array(means)
-stds = np.array(stds)
-
-plt.figure(figsize=(8, 6))
-plt.plot(means, label='mean')
-plt.plot(stds, label='std')
-plt.legend()
-plt.title('mean and std')
-plt.show()
-
-# INSERT_YOUR_CODE
-with torch.no_grad():
-    sim = norm(weight) @ norm(weight).T
-    sim_clamped = sim.clamp(-1.0, 1.0)
-    angles = torch.acos(sim_clamped) * 180.0 / torch.pi  # Convert radians to degrees
-
-plt.figure(figsize=(8, 6))
-im = plt.imshow(angles.cpu().numpy(), cmap='coolwarm', vmin=80, vmax=100)
-plt.colorbar(im, label='Angle (degrees)')
-plt.title('Pairwise Angle Matrix (Centered at 90°, Range 80-100°)')
-plt.xlabel('Class Index')
-plt.ylabel('Class Index')
-plt.tight_layout()
-plt.savefig(f'{dim}.png')
-plt.show()
+    def forward(self, x):
+        return self.lambd(x)
 
 
+class BasicBlock_s(nn.Module):
+    expansion = 1
+    def __init__(self, in_planes, planes, stride=1, option='A'):
+        super(BasicBlock_s, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
 
-# import torch 
-# from torch import nn 
-# from torch.nn import functional 
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != planes:
+            if option == 'A':
+                """
+                For CIFAR10 ResNet paper uses option A.
+                """
+                self.shortcut = LambdaLayer(lambda x:
+                                            F.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, planes//4, planes//4), "constant", 0))
+            elif option == 'B':
+                self.shortcut = nn.Sequential(
+                     nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                     nn.BatchNorm2d(self.expansion * planes)
+                )
 
-# w = torch.randn((100,64))
-# w_normed = functional.normalize(w,dim=1,p=2)
-# print(w_normed[0].norm(p=2))
-# w_T = w.T 
-# w_T_normed = functional.normalize(w_T,dim=0,p=2)
-# print(w_T_normed[:,0].norm(p=2))
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+def get_backbone(name, block, layers, groups=1, width_per_group=64):
+    if name == 'resnet32':
+        class ResNet_s(nn.Module):
+            def __init__(self, block, num_blocks):
+                super(ResNet_s, self).__init__()
+                factor = 2
+                self.in_planes = 16 * factor
+                self.conv1 = nn.Conv2d(3, 16 * factor, kernel_size=3, stride=1, padding=1, bias=False)
+                self.bn1 = nn.BatchNorm2d(16 * factor)
+                self.layer1 = self._make_layer(block, 16 * factor, num_blocks[0], stride=1)
+                self.layer2 = self._make_layer(block, 32 * factor, num_blocks[1], stride=2)
+                self.layer3 = self._make_layer(block, 64 * factor, num_blocks[2], stride=2)
+
+                for m in self.modules():
+                    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                        nn.init.kaiming_normal_(m.weight)
+
+            def _make_layer(self, block, planes, num_blocks, stride):
+                strides = [stride] + [1]*(num_blocks-1)
+                layers = []
+                for stride in strides:
+                    layers.append(block(self.in_planes, planes, stride))
+                    self.in_planes = planes * block.expansion
+                return nn.Sequential(*layers)
+
+            def forward(self, x):
+                out = F.relu(self.bn1(self.conv1(x)))
+                out = self.layer1(out)
+                out = self.layer2(out)
+                out = self.layer3(out)
+                out = F.avg_pool2d(out, out.size()[3])
+                out1 = out.view(out.size(0), -1)
+                return out1
+        return ResNet_s(block, layers)
+    else:
+        class ResNet_backbone(ResNet):
+            def __init__(self, block, layers, groups=1, width_per_group=64):
+                super().__init__(block=block, layers=layers, num_classes=1000, groups=groups, width_per_group=width_per_group)
+            
+            def _forward_impl(self, x:Tensor):
+                x = self.conv1(x)
+                x = self.bn1(x)
+                x = self.relu(x)
+                x = self.maxpool(x)
+
+                x = self.layer1(x)
+                x = self.layer2(x)
+                x = self.layer3(x)
+                x = self.layer4(x)
+
+                x = self.avgpool(x)
+                x = torch.flatten(x, 1)
+
+                return x
+        return ResNet_backbone(block, layers, groups=groups, width_per_group=width_per_group)
+
+def resnet34_backbone(pretrained=False):
+    '''
+    512 dimensions
+    '''
+    model = get_backbone(name='resnet34',block=BasicBlock, layers=[3,4,6,3])
+    if pretrained : 
+        model.load_state_dict(ResNet34_Weights.IMAGENET1K_V1.get_state_dict(progress=True))
+    del model.fc 
+    return model 
+
+def resnet50_backbone(pretrained=False):
+    '''
+    2048 dimensions
+    '''
+    model = get_backbone(name='resnet50',block=Bottleneck, layers=[3,4,6,3])
+    if pretrained : 
+        model.load_state_dict(ResNet50_Weights.IMAGENET1K_V1.get_state_dict(progress=True))
+    del model.fc 
+    return model 
+
+def resnext50_backbone(pretrained=False):
+    '''
+    2048 dimensions
+    '''
+    model = get_backbone(name='resnext50',block=Bottleneck, layers=[3,4,6,3], groups=32, width_per_group=4)
+    if pretrained : 
+        model.load_state_dict(ResNeXt50_32X4D_Weights.IMAGENET1K_V1.get_state_dict(progress=True))
+    del model.fc 
+    return model 
+
+def resnet32_backbone():
+    '''
+    64 dimensions
+    '''
+    model = get_backbone(name='resnet32',block=BasicBlock_s, layers=[5,5,5])
+    return model 
+
+def get_resnet(architecture, pretrained=False):
+    if architecture == 'resnet34':
+        return resnet34_backbone(pretrained=pretrained)
+    elif architecture == 'resnet50':
+        return resnet50_backbone(pretrained=pretrained)
+    elif architecture == 'resnext50':
+        return resnext50_backbone(pretrained=pretrained)
+    elif architecture == 'resnet32':
+        return resnet32_backbone()
+
+
+if __name__ == '__main__':
+    x = torch.randn(1,3,32,32)
+    model = resnet32_backbone()
+    y = model(x)
+    print(y.shape)

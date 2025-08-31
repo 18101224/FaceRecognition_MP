@@ -54,7 +54,7 @@ def get_backbone(name, block, layers, groups=1, width_per_group=64):
             def __init__(self, block, num_blocks):
                 super(ResNet_s, self).__init__()
                 factor = 2
-                self.in_planes = 16
+                self.in_planes = 16*factor
                 self.conv1 = nn.Conv2d(3, 16 * factor, kernel_size=3, stride=1, padding=1, bias=False)
                 self.bn1 = nn.BatchNorm2d(16 * factor)
                 self.layer1 = self._make_layer(block, 16 * factor, num_blocks[0], stride=1)
