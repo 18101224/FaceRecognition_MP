@@ -151,7 +151,7 @@ class ImbalancedModel(nn.Module):
         'e2_resnext50': e2_resnext50
     }
     dim_dict = {
-        'resnet32': (64, 512, 128),
+        'resnet32': (128, 512, 128),
         'resnet50': (2048, 2048, 1024),
         'resnext50': (2048, 2048, 1024),
         'ir50': (256, 512, 128),
