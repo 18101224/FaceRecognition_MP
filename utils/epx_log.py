@@ -1,11 +1,5 @@
 from datetime import datetime 
-import random 
-import time 
-
+import uuid
 def get_exp_id(args):
-    now = datetime.now()
-    random_num = random.uniform(0, 10)
-    time.sleep(random_num)
-    print(f'random_num: {random_num}')
-    exp_id = args.server+now.strftime('%m%d%H%M%S%f')[:12]  # mmddhhmmssmm
+    exp_id = args.server+str(uuid.uuid4())
     return exp_id
