@@ -56,7 +56,7 @@ class ECELoss:
         if not surrogate :
             self.rho = 1/(num_classes-1)
 
-    def cluster_centers(self, weight):
+    def __call__(self, weight):
         '''
         weight : num_classes, dim. normalized weight 
         '''
