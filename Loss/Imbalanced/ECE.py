@@ -1,8 +1,8 @@
 import torch 
 import numpy as np
 from torch_kmeans import SoftKMeans
+from torch_kmeans.utils.distances import CosineSimilarity
 from torch.nn.parallel import DistributedDataParallel as DDP
-
 __all__ = ['get_angle_loss', 'weight_scheduling', 'ECELoss']
 
 def get_angle_loss(kernel):
@@ -42,7 +42,7 @@ class ECELoss:
     def __init__(self, args, k, hard_weight, soft_weight, num_classes , surrogate:bool, temp=5, max_iter=50):
         self.args = args 
         kmeans = SoftKMeans(n_clusters=k,
-                                    distance='CosineSimilarity',
+                                    distance=CosineSimilarity,
                                     normalize='unit',
                                     temperature=temp,
                                     max_iter=max_iter)
