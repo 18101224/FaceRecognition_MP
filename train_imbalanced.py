@@ -9,8 +9,8 @@ from argparse import ArgumentParser
 from models import ImbalancedModel
 from collections import Counter
 from torch.optim import SGD
-from Loss.Imbalanced import get_angle_loss, BCLLoss, weight_scheduling
-from dataset import get_cifar_dataset, get_transform, Large_dataset, FER, ImbalancedDatasetSampler, DistributedSamplerWrapper
+from Loss.Imbalanced import get_angle_loss, BCLLoss, weight_scheduling, ECELoss
+from dataset import get_cifar_dataset, get_transform, Large_dataset, FER
 from utils import get_exp_id
 from analysis import plot_angle_matrix
 import numpy as np
@@ -24,11 +24,11 @@ import time
 from torch.profiler import profile, schedule, ProfilerActivity
 import random
 
-# random.seed(42)
-# np.random.seed(42)
-# torch.manual_seed(42)
-# torch.cuda.manual_seed(42)
-# torch.cuda.manual_seed_all(42)  
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+torch.cuda.manual_seed_all(42)  
     
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
@@ -89,33 +89,21 @@ def get_dataset(args, train:bool):
 
     
 def get_model(args):
-    if include('NCL', args.loss):
-        if 'cifar' in args.dataset_name : 
-            n_c = 100 if '100' in args.dataset_name else 10
-            from models import Combiner, multi_network_MOCO
-            model = {'comb': Combiner(args,n_c), 'model': multi_network_MOCO(args,num_classes=n_c, mode='train')}
-
-        else:
-            n_c = 1000 if '1000' in args.dataset_name else 8142
-            from models import Combiner, multi_network
-            model = {'comb': Combiner(args,n_c), 'model': multi_network(args,num_classes=n_c, mode='train')}
-        return model 
+    if 'cifar' in args.dataset_name:
+        n_c = 100 if '100' in args.dataset_name else 10
+        model = ImbalancedModel(num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+        return model
+    elif 'imagenet_lt' == args.dataset_name:
+        model = ImbalancedModel(num_classes=1000, model_type=args.model_type)
+        return model
+    elif 'inat' == args.dataset_name:
+        model = ImbalancedModel(num_classes=8142, model_type=args.model_type)
+        return model
+    elif 'RAF-DB' == args.dataset_name or 'AffectNet' == args.dataset_name:
+        model = ImbalancedModel(num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+        return model
     else:
-        if 'cifar' in args.dataset_name:
-            n_c = 100 if '100' in args.dataset_name else 10
-            model = ImbalancedModel(num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
-            return model
-        elif 'imagenet_lt' == args.dataset_name:
-            model = ImbalancedModel(num_classes=1000, model_type=args.model_type)
-            return model
-        elif 'inat' == args.dataset_name:
-            model = ImbalancedModel(num_classes=8142, model_type=args.model_type)
-            return model
-        elif 'RAF-DB' == args.dataset_name or 'AffectNet' == args.dataset_name:
-            model = ImbalancedModel(num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
-            return model
-        else:
-            raise ValueError(f'Dataset {args.dataset_name} not supported')
+        raise ValueError(f'Dataset {args.dataset_name} not supported')
 
 
 def get_args():
@@ -162,10 +150,13 @@ def get_args():
     args.add_argument('--regular_simplex', default=False)
     args.add_argument('--splitted_contrastive_learning', default=False)
     args.add_argument('--use_mean', default=False)
+    args.add_argument('--surrogate', default=False)
+    args.add_argument('--k',type=int)
+    args.add_argument('--hard_weight', type=float, default=1)
+    args.add_argument('--soft_weight', type=float, default=1)
     # Model checkpoint
     args.add_argument('--model_type', type=str, choices=['resnet32','resnet50','resnext50','ir50','e2_resnet32','e2_resnext50'], default='resnet32')
     args.add_argument('--feature_branch', default=False)
-    args.add_argument('--use_sampler', default=False)
 
     #dataset information 
     args.add_argument('--dataset_name',type=str,choices=['cifar100','svhn','cifar10','imagenet_lt','inat','RAF-DB','AffectNet'])
@@ -256,17 +247,9 @@ class Trainer:
         
         # Create samplers for distributed training
         if args.world_size > 1 :
-            if args.use_sampler :
-                train_sampler = ImbalancedDatasetSampler(self.train_dataset,labels=self.train_dataset.labels,)
-                self.train_sampler = DistributedSamplerWrapper(train_sampler, shuffle=True)
-            else : 
-                self.train_sampler = DistributedSampler(self.train_dataset, shuffle=True)
-
+            self.train_sampler = DistributedSampler(self.train_dataset, shuffle=True)
         else:
-            if args.use_sampler :
-                self.train_sampler = ImbalancedDatasetSampler(self.train_dataset,labels=self.train_dataset.labels,)
-            else : 
-                self.train_sampler = None
+            self.train_sampler = None
         self.test_sampler = DistributedSampler(self.test_dataset, shuffle=False) if args.world_size > 1 else None
         
         # Create dataloaders
@@ -324,9 +307,10 @@ class Trainer:
         ##################################################
         ######### 📊 Loss settings #######################
         ##################################################
-        if 'BCL' in self.args.loss :
+        if include(self.args.loss, ['BCL']) :
             self.bcl = BCLLoss(cls_num_list=self.train_dataset.img_num_list, args=self.args, temperature=self.args.temperature)
-
+        if include(self.args.loss, ['ECE']) :
+            self.ece = ECELoss(args=self.args, k=self.args.k, hard_weight=self.args.hard_weight, soft_weight=self.args.soft_weight, num_classes=np.max(self.train_dataset.labels)+1, surrogate=self.args.surrogate)
         #############################################
         #### 📊 METRICS & LOGGING INITIALIZATION ####
         #############################################
@@ -434,9 +418,8 @@ class Trainer:
             if include(self.args.loss, ['ECE']) : 
                 mode = self.model.module if self.args.world_size > 1 else self.model
                 kernel = mode.get_kernel()
-                angle_mean, angle_std = get_angle_loss(kernel)
-                ece = angle_mean*int(bool(self.args.use_mean)) + angle_std 
-                losses.append(ece*self.args.ece_weight)
+                ece = self.ece(kernel.T)
+                losses.append(ece)
                 losses_for_log['ECE'] = ece.detach().cpu().item()
         else:
             losses = torch.nn.functional.cross_entropy(outputs, labels)
@@ -604,7 +587,7 @@ class Trainer:
     @profile_train_if_enabled
     def train(self):
         start_epoch = getattr(self, '_start_epoch', 0)
-        for epoch in range(start_epoch, self.args.n_epochs):
+        for epoch in tqdm(range(start_epoch, self.args.n_epochs), disable=self.args.world_size > 1 and self.args.rank != 0):
             temp_lr = adjust_learning_rate(self.optimizer, epoch, self.scheduler, self.args)
             if self.args.world_size > 1:
                 self.train_sampler.set_epoch(epoch)

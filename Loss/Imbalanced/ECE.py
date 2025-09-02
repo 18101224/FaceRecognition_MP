@@ -1,5 +1,7 @@
 import torch 
 import numpy as np
+from torch_kmeans import SoftKMeans
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 __all__ = ['get_angle_loss', 'weight_scheduling']
 
@@ -35,3 +37,46 @@ def weight_scheduling(method, beta, epoch, n_epochs):
             return beta * 1.0
     else:
         raise ValueError("Unknown method: {}".format(method))
+    
+class ECELoss:
+    def __init__(self, args, k, hard_weight, soft_weight, num_classes , surrogate:bool, temp=5, max_iter=50):
+        self.args = args 
+        kmeans = SoftKMeans(n_clusters=k,
+                                    distance='CosineSimilarity',
+                                    normalize='unit',
+                                    temperature=temp,
+                                    max_iter=max_iter)
+        if args.world_size ==1 : 
+            self.kmeans = kmeans.to(args.device)
+        else:
+            self.kmeans = DDP(kmeans.cuda(),device_ids=[args.local_rank],find_unused_parameters=True)
+        self.hard_weight = hard_weight
+        self.soft_weight = soft_weight
+        self.surrogate = surrogate
+        if not surrogate :
+            self.rho = 1/(num_classes-1)
+
+    def cluster_centers(self, weight):
+        '''
+        weight : num_classes, dim. normalized weight 
+        '''
+        if self.hard_weight != self.soft_weight : 
+            result = self.kmeans(weight.unsqueeze(0))
+            labels = result.labels.squeeze(0).reshape(-1,1) # num_classes,1
+            centers = result.centers # num_classes, K, dim 
+            mask = (labels.T==labels)
+            weight_matrix = torch.where(mask, self.soft_weight, self.hard_weight) # if same 
+        else:
+            weight_matrix = torch.ones([weight.shape[0]]*2).to(weight.device)
+        sims = weight@weight.T 
+        if self.surrogate :
+            std = torch.triu(sims, diagonal=1).reshape(-1).std()
+            mean = torch.triu(sims*weight_matrix,diagonal=1).reshape(-1).sum()
+            loss = mean*(int(bool(self.args.use_mean)))+std
+        else: 
+            loss = torch.triu(((sims-self.rho)**2)*weight_matrix, diagonal=1).reshape(-1).sum()
+        return loss*self.args.ece_weight
+
+
+        
+        
