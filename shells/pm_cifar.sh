@@ -39,7 +39,7 @@ make_cmd () {
 
 
 
-make_cmd '--learning_rate=0.15 --loss=BCL_ECE --ece_weight=0.3 --surrogate=True --dataset_name=cifar100 --ce_weight=1 --cl_weight=1' &
-make_cmd '--learning_rate=0.15 --loss=BCL_ECE --ece_weight=0.3 --surrogate=True --dataset_name=cifar100 --ce_weight=1 --cl_weight=1 --hard_weight=1 --soft_weight=0.5 --k=10' &
-make_cmd '--learning_rate=0.15 --loss=BCL_ECE --ece_weight=0.5 --surrogate=True --dataset_name=cifar100 --ce_weight=1 --cl_weight=1 --hard_weight=1 --soft_weight=0.5 --k=10' &
+make_cmd '--learning_rate=0.15 --loss=BCL_ECE --ece_weight=1 --surrogate=True --dataset_name=cifar100 --ce_weight=1 --cl_weight=1' &
+make_cmd '--learning_rate=0.15 --loss=BCL_ECE --ece_weight=1--surrogate=True --dataset_name=cifar100 --ce_weight=1 --cl_weight=1 --hard_weight=1 --soft_weight=0.5 --k=10' &
+make_cmd '--learning_rate=0.15 --loss=BCL_ECE --ece_weight=1 --surrogate=True --dataset_name=cifar100 --ce_weight=1 --cl_weight=1 --hard_weight=1 --soft_weight=0.5 --k=10' &
 wait 
