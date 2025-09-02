@@ -24,11 +24,11 @@ import time
 from torch.profiler import profile, schedule, ProfilerActivity
 import random
 
-random.seed(42)
-np.random.seed(42)
-torch.manual_seed(42)
-torch.cuda.manual_seed(42)
-torch.cuda.manual_seed_all(42)  
+# random.seed(42)
+# np.random.seed(42)
+# torch.manual_seed(42)
+# torch.cuda.manual_seed(42)
+# torch.cuda.manual_seed_all(42)  
     
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 

@@ -3,7 +3,7 @@ import numpy as np
 from torch_kmeans import SoftKMeans
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-__all__ = ['get_angle_loss', 'weight_scheduling']
+__all__ = ['get_angle_loss', 'weight_scheduling', 'ECELoss']
 
 def get_angle_loss(kernel):
     sims = kernel.T @ kernel 
