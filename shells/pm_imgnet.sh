@@ -39,7 +39,7 @@ make_cmd () {
 }
 
 for lr in 0.1 0.15 ; do
-srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=2 --gpu-bind=map_gpu:2,3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=imagenet_lt  --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.3 --use_mean=True ' 29501" &  
-srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=2 --gpu-bind=map_gpu:0,1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=imagenet_lt  --loss=BCL --ce_weight=1 --cl_weight=1 --ece_weight=0.3 ' 29502" &  
+srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=2 --gpu-bind=map_gpu:2,3 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=imagenet_lt  --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.5 --use_mean=True ' 29501" &  
+srun --exclusive -N1 -n1 -w $NODE1 -c ${SLURM_CPUS_PER_TASK:-1} --cpu-bind=cores --gpus=2 --gpu-bind=map_gpu:0,1 bash -lc "$(declare -f make_cmd); make_cmd  '--learning_rate=$lr --dataset_name=imagenet_lt  --loss=BCL_ECE --ce_weight=1 --cl_weight=1 --ece_weight=0.5 ' 29502" &  
 wait
 done
