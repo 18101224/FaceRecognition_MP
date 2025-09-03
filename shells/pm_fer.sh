@@ -3,7 +3,7 @@
 #SBATCH -A m1248_g 
 #SBATCH -q shared
 #SBATCH -N 1
-#SBATCH -t 04:00:00
+#SBATCH -t 12:00:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -37,7 +37,7 @@ make_cmd () {
 }
 
 
-
-
-make_cmd '--learning_rate=2e-5 --loss=CE --cl_weight=1' 
+for lr in 1e-5 3e-5; do 
+make_cmd '--learning_rate=$lr --loss=CE --cl_weight=1' 
+done 
 wait 
