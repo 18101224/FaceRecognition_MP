@@ -42,7 +42,7 @@ for epoch in range(10):
             loss = torch.nn.functional.cross_entropy(pred, label)
             bs = label.shape[0]
             pred = torch.argmax(pred, dim=1)
-            acc += (pred == label).mean().item() * bs 
+            acc += (pred == label).int().mean().item() * bs 
         acc = acc/len(valid_loader.dataset)
         print(acc)
     print(f'epoch {epoch} acc {acc/len(valid_loader.dataset)}')
