@@ -45,6 +45,6 @@ for epoch in range(10):
             pred = torch.argmax(pred, dim=1)
             acc += (pred == label).float().mean().item() * bs 
         acc = acc/len(valid_loader.dataset)
-        print(acc)
-    print(f'epoch {epoch} acc {acc/len(valid_loader.dataset)}')
+
+    print(f'epoch {epoch} acc {acc}')
     model.train()

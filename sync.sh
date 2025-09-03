@@ -1,4 +1,4 @@
-EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/ --exclude=repos/"
+EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/ --exclude=repos/ --exclude=.gits/ --exclude=wandb/"
 SOURCE_DIR="."
 
 SERVERS=(
@@ -9,6 +9,9 @@ SERVERS=(
     "mine1:/home/mj/rl/"
     
 )
+SERVERS=(
+    "server7:/home/gpuadmin/mj/rl/"
+)
 # Exclude checkpoint directory from syncing
 
 
@@ -17,15 +20,15 @@ for SERVER in "${SERVERS[@]}"; do
     rsync -avz --delete --checksum $EXCLUDE_OPTS "$SOURCE_DIR" "$SERVER" &
 done 
 
-wait
-echo "****************************************"
-echo "*                                      *"
-echo "*      🚀🚀 SYNCHRONIZATION DONE 🚀🚀      *"
-echo "*                                      *"
-echo "****************************************"
-echo ""
+# wait
+# echo "****************************************"
+# echo "*                                      *"
+# echo "*      🚀🚀 SYNCHRONIZATION DONE 🚀🚀      *"
+# echo "*                                      *"
+# echo "****************************************"
+# echo ""
 
 
-rsync -avz --delete --checksum $EXCLUDE_OPTS "$SOURCE_DIR" "pm:/pscratch/sd/s/sgkim/hcir/rl"
+# rsync -avz --delete --checksum $EXCLUDE_OPTS "$SOURCE_DIR" "pm:/pscratch/sd/s/sgkim/hcir/rl"
 
 

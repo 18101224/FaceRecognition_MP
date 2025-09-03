@@ -196,7 +196,7 @@ def get_transform(args, train):
         }
     else:
         raise ValueError(f"Loss {args.loss} not supported")
-    if not args.aug :
+    if not getattr(args, 'aug', False) :
         tr_dict[dataset_name][0].transforms.pop(2)
 
     return tr_dict[dataset_name]

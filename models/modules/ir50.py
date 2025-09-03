@@ -3,6 +3,7 @@ from torch.nn import Linear, Conv2d, BatchNorm1d, BatchNorm2d, PReLU, ReLU, Sigm
 import torch.nn.functional as F
 import torch
 from collections import namedtuple
+from torch import distributed as dist
 
 class Flatten(Module):
     def forward(self, input):
@@ -189,8 +190,11 @@ class Backbone(Module):
         self.body2 = Sequential(*modules2)
         self.body3 = Sequential(*modules3)
 
-
-        self.load_state_dict(torch.load(checkpoint_path, weights_only=False, map_location='cpu'))
+        try : 
+            self.load_state_dict(torch.load(checkpoint_path, weights_only=False, map_location='cpu'))
+            print('IR50 pretrained weight loadded')
+        except Exception as e :
+            raise ValueError(f'IR50 pretrained weight not found {e}')
 
     def forward(self, x):
         x = F.interpolate(x, size=112)

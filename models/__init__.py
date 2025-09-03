@@ -4,7 +4,7 @@ from .modules import resnet32_backbone, resnet50_backbone, resnext50_backbone
 from .modules import e2_resnet32, e2_resnext50
 #from .modules import Combiner, multi_network, multi_network_MOCO
 from copy import deepcopy
-from .kp_rpe import *
+from torch import nn
 import sys
 sys.path.extend('..')
 from utils import *
@@ -15,50 +15,51 @@ from functools import partial
 
 __all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone',]
 
+if False : 
+    from .kp_rpe import *
+    class kprpe_fer(nn.Module):
+        def __init__(self,cfg_path,token_path=None,force_download=False,cos=False):
+            super().__init__()
+            self.kp_rpe = get_kprpe_pretrained(cfg_path,token_path,force_download)
+            
+            self.cos = cos
 
-class kprpe_fer(nn.Module):
-    def __init__(self,cfg_path,token_path=None,force_download=False,cos=False):
-        super().__init__()
-        self.kp_rpe = get_kprpe_pretrained(cfg_path,token_path,force_download)
-        
-        self.cos = cos
+        def forward(self,x,keypoint):
+            embed = self.kp_rpe(x,keypoint)
+            if not self.cos :
+                out = self.classifier(embed)
+                return embed, out
+            else:
+                margin, out = self.classifier(embed)
+                return embed,out,margin
 
-    def forward(self,x,keypoint):
-        embed = self.kp_rpe(x,keypoint)
-        if not self.cos :
-            out = self.classifier(embed)
-            return embed, out
-        else:
-            margin, out = self.classifier(embed)
-            return embed,out,margin
-
-    def load_from_state_dict(self,path):
-        cls_pt = torchload(os.path.join(path,'classifier.pt'),weights_only=True)
-        self.classifier.load_state_dict(cls_pt)
-        kp_rpe_pt = os.path.join(path,'model.pt')
-        self.kp_rpe.load_state_dict_from_path(kp_rpe_pt)
-        self.kp_rpe.input_color_flip = False
-
-
-    def train_PatchEmbed(self):
-        self.kp_rpe.train()
-        self.classifier.train()
-        for p in self.kp_rpe.parameters():
-            p.requires_grad_(False)
-        for p in self.classifier.parameters():
-            p.requires_grad_(False)
+        def load_from_state_dict(self,path):
+            cls_pt = torchload(os.path.join(path,'classifier.pt'),weights_only=True)
+            self.classifier.load_state_dict(cls_pt)
+            kp_rpe_pt = os.path.join(path,'model.pt')
+            self.kp_rpe.load_state_dict_from_path(kp_rpe_pt)
+            self.kp_rpe.input_color_flip = False
 
 
-def get_model(model_config):
-    from .vit_kprpe import load_model as load_vit_kprpe_model
-    model = load_vit_kprpe_model(model_config)
-    if model_config.start_from:
-        model.load_state_dict_from_path(model_config.start_from)
+        def train_PatchEmbed(self):
+            self.kp_rpe.train()
+            self.classifier.train()
+            for p in self.kp_rpe.parameters():
+                p.requires_grad_(False)
+            for p in self.classifier.parameters():
+                p.requires_grad_(False)
 
-    if model_config.freeze:
-        for param in model.parameters():
-            param.requires_grad_(False)
-    return model
+
+    def get_model(model_config):
+        from .vit_kprpe import load_model as load_vit_kprpe_model
+        model = load_vit_kprpe_model(model_config)
+        if model_config.start_from:
+            model.load_state_dict_from_path(model_config.start_from)
+
+        if model_config.freeze:
+            for param in model.parameters():
+                param.requires_grad_(False)
+        return model
 
 
 def get_residual_module(in_features, num_hidden_layers):
@@ -182,9 +183,21 @@ class ImbalancedModel(nn.Module):
         self.weight = torch.randn((regular_simplex,num_classes)).uniform_(-1,1).renorm(2,1,1e-5).mul_(1e5)
         self.weight = nn.Parameter(self.weight, requires_grad=True) # weight is dim, num_classes
 
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight)
+        if model_type == 'ir50':
+            targets = []
+            if self.feature_branch:
+                targets.extend([self.head, self.head_fc])
+            if self.feature_module:
+                targets.append(self.feature_module)
+            for t in targets:
+                if t is not None:
+                    for m in t.modules():
+                        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                            nn.init.kaiming_normal_(m.weight)
+        else:
+            for m in self.modules():
+                if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight)
 
 
     def get_kernel(self):
