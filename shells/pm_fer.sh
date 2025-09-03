@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J hcir_cifar
+#SBATCH -J hcir_fer
 #SBATCH -A m1248_g 
 #SBATCH -q debug
 #SBATCH -N 1

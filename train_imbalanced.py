@@ -158,7 +158,7 @@ def get_args():
     # Model checkpoint
     args.add_argument('--model_type', type=str, choices=['resnet32','resnet50','resnext50','ir50','e2_resnet32','e2_resnext50'], default='resnet32')
     args.add_argument('--feature_branch', default=False)
-    args.add_argument('--use_sampler',defualt=False)
+    args.add_argument('--use_sampler',default=False)
     #dataset information 
     args.add_argument('--dataset_name',type=str,choices=['cifar100','svhn','cifar10','imagenet_lt','inat','RAF-DB','AffectNet'])
     args.add_argument('--dataset_path',type=str)
