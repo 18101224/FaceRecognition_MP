@@ -38,11 +38,11 @@ make_cmd () {
 
 
 for lr in 1e-5 3e-5; do 
-make_cmd '--learning_rate=$lr --loss=CE --cl_weight=1' 
+make_cmd "--learning_rate=${lr} --loss=CE --cl_weight=1" 
 done 
 wait 
 
 for lr in 1e-5 2e-5 3e-5; do 
-make_cmd '--learning_rate=$lr --loss=BCL --cl_weight=1 --ce_weight=1' 
+make_cmd "--learning_rate=${lr} --loss=BCL --cl_weight=1 --ce_weight=1" 
 done 
 wait 
