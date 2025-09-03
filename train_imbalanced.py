@@ -326,6 +326,7 @@ class Trainer:
         #############################################
         self.best_acc = 0
         self.best_macro_acc = 0
+        self.weight_matrix= []
         losses = get_losses(self.args.loss)
         self.log = {
             'train_acc': [], 'train_loss': [],
@@ -562,14 +563,15 @@ class Trainer:
             return
         
         save_dir = f'checkpoint/{self.id}'  
-
+    
         # Get model state dict
-        model_state = self.model.module.state_dict() if self.args.world_size > 1 else self.model.state_dict()
-        
+        model = self.model.module if self.args.world_size > 1 else self.model
+
+        self.weight_matrix.append(model.get_kernel().detach().cpu().numpy().T)
         # Save checkpoint
         checkpoint = {
             'epoch': epoch,
-            'model_state_dict': model_state,
+            'model_state_dict': model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler is not None else None,
             'best_acc': self.best_acc,
@@ -658,10 +660,9 @@ class Trainer:
             img_path = f'checkpoint/{self.id}/angle_mat/{str(epoch).zfill(4)}.png'
             if self.args.use_wandb : 
                 wandb.log({'angle_mat': wandb.Image(img_path)})
-            time.sleep(30)
             with open(f'checkpoint/{self.id}/args.json','w') as f :
                 json.dump(_jsonify(vars(self.args)), f, indent=2)  
-
+            torch.save(self.weight_matrix, f'checkpoint/{self.id}/weight_matrix.pth')
         return self.best_acc, self.best_macro_acc, self.id 
     
 if __name__ == '__main__':
