@@ -122,7 +122,7 @@ class Large_dataset(Dataset):
             self.targets = self.labels 
         else:
             post = 'train' if train else 'val'
-            json_path = os.path.join(root, f'{post}.json')
+            json_path = os.path.join(root, f'{post}2018.json')
             with open(json_path, 'r') as f:
                 dataset_json = json.load(f)
 
