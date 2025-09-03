@@ -39,7 +39,7 @@ def weight_scheduling(method, beta, epoch, n_epochs):
         raise ValueError("Unknown method: {}".format(method))
     
 class ECELoss:
-    def __init__(self, args, k, hard_weight, soft_weight, num_classes , surrogate:bool, temp=5, max_iter=50):
+    def __init__(self, args, k, hard_weight, soft_weight, num_classes , surrogate:bool, temp=5, max_iter=50, std_weight=1.0, mean_weight=1.0):
         self.args = args 
         kmeans = SoftKMeans(n_clusters=k,
                                     distance=CosineSimilarity,
@@ -52,7 +52,8 @@ class ECELoss:
         self.surrogate = surrogate
         if not surrogate :
             self.rho = -1/(num_classes-1) ## 이거 원래 -1 아니었음 !! 
-
+        self.std_weight = std_weight
+        self.mean_weight = mean_weight
     def __call__(self, weight):
         '''
         weight : num_classes, dim. normalized weight 
@@ -70,7 +71,7 @@ class ECELoss:
         if self.surrogate :
             std = sims[triu_indices].reshape(-1).std()
             mean = sims[triu_indices]*weight_matrix[triu_indices].reshape(-1).mean()
-            loss = mean*(int(bool(self.args.use_mean)))+std
+            loss = self.mean_weight*mean*(int(bool(self.args.use_mean)))+self.std_weight*std
         else: 
             loss = (((sims[triu_indices]-self.rho)**2).reshape(-1)*weight_matrix[triu_indices]).reshape(-1).mean()
         return loss*self.args.ece_weight

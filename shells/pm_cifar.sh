@@ -38,6 +38,7 @@ make_cmd () {
 
 # CIFAR 10 부터 시작., 
 
+#cifar10 1:1
 # for not surrogate to gpu 0
 CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.3' &
 CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.5' &
@@ -61,30 +62,32 @@ CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.1 --cl_weight=1 --ce_weight=1
 
 wait
 
+#cifar100 1:1
 # for not surrogate to gpu 0
-CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.3' &
-CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.5' &
-CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=1' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_128d --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_128d --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_128d --ece_weight=1' &
+
 
 # for only std to gpu 1 
-CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_64d --ece_weight=0.3' &
-CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_64d --ece_weight=0.5' &
-CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_64d --ece_weight=1' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_128d --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_128d --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_128d --ece_weight=1' &
 
 # for mean + std to gpu 2 
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --ece_weight=0.3' &
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --ece_weight=0.5' &
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --ece_weight=1' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --ece_weight=1' &
 
 
 # for mean + std to gpu 3
-CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_64d ' &
-CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=0.6 --ce_weight=2 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_64d ' &
-CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.1 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_64d ' &
+CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_128d ' &
+CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=0.6 --ce_weight=2 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_128d ' &
+CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.1 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_128d ' &
 
 wait
 
-
+# cifar10 0.6:2
 # for not surrogate to gpu 0
 CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=0.6 --ce_weight=2 --dataset_name=cifar10 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.3' &
 CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=0.6 --ce_weight=2 --dataset_name=cifar10 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.5' &
@@ -108,25 +111,70 @@ CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.1 --cl_weight=1 --ce_weight=1
 
 wait
 
+# cifar100 0.6:2
 # for not surrogate to gpu 0
-CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.3' &
-CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=0.5' &
-CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_64d --ece_weight=1' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_128d --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_128d --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --model_type=resnet32_128d --ece_weight=1' &
 
 # for only std to gpu 1 
-CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_64d --ece_weight=0.3' &
-CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_64d --ece_weight=0.5' &
-CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_64d --ece_weight=1' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_128d --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_128d --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --model_type=resnet32_128d --ece_weight=1' &
 
 # for mean + std to gpu 2 
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --ece_weight=0.3' &
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --ece_weight=0.5' &
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --ece_weight=1' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=2 --ce_weight=0.6 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --ece_weight=1' &
 
 
 # for mean + std to gpu 3
-CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_64d ' &
-CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=0.6 --ce_weight=2 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_64d ' &
-CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.1 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_64d ' &
+CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_128d ' &
+CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.15 --cl_weight=0.6 --ce_weight=2 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_128d ' &
+CUDA_VISIBLE_DEVICES=3 make_cmd '--learning_rate=0.1 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL --model_type=resnet32_128d ' &
 
+wait
+
+# cifar10 weighted 
+# for not surrogate to gpu 0
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=1 --std_weight=0.5 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=1 --std_weight=0.5 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=1 --std_weight=0.1 --ece_weight=1' &
+
+# for only std to gpu 1 
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=0.5 --std_weight=1 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=1 --std_weight=0.1 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=1 --std_weight=0.5 --ece_weight=1' &
+
+# for mean + std to gpu 2 
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=0.1 --std_weight=1 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=0.1 --std_weight=1 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=0.1 --std_weight=1 --ece_weight=1' &
+
+# for mean + std to gpu 2 
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=1 --std_weight=0.1 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=0.5 --std_weight=1 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar10 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_64d --mean_weight=0.5 --std_weight=1 --ece_weight=1' &
+wait
+
+#cifar100 weighted
+# for not surrogate to gpu 0
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=1 --std_weight=0.5 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=1 --std_weight=0.5 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=0 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=1 --std_weight=0.1 --ece_weight=1' &
+
+# for only std to gpu 1 
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=0.5 --std_weight=1 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=1 --std_weight=0.1 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=1 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=1 --std_weight=0.5 --ece_weight=1' &
+
+# for mean + std to gpu 2 
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=0.1 --std_weight=1 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=0.1 --std_weight=1 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=0.1 --std_weight=1 --ece_weight=1' &
+
+# for mean + std to gpu 2 
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=1 --std_weight=0.1 --ece_weight=0.3' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=0.5 --std_weight=1 --ece_weight=0.5' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=0.15 --cl_weight=1 --ce_weight=1 --dataset_name=cifar100 --loss=BCL_ECE --surrogate=True --use_mean=True --model_type=resnet32_128d --mean_weight=0.5 --std_weight=1 --ece_weight=1' &
 wait
