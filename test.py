@@ -20,6 +20,7 @@ valid_loader = DataLoader(valid_dataset,batch_size=128,shuffle=False)
 
 opt = SAM(model.parameters(),torch.optim.AdamW,lr=0.00001,weight_decay=0.001,adaptive=True)
 for epoch in range(10):
+    model.train()
     for img , label in tqdm(train_loader) : 
         img = img[0]
         img = img.to(device)
