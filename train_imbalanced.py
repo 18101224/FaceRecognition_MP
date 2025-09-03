@@ -249,7 +249,7 @@ class Trainer:
         # Create samplers for distributed training
         if args.world_size > 1 :
             if args.use_sampler : 
-                self.train_sampler = DistributedSamplerWrapper(ImbalancedDatasetSampler(self.train_dataset, labels=self.train_dataset.labels, shuffle=True))
+                self.train_sampler = DistributedSamplerWrapper(ImbalancedDatasetSampler(self.train_dataset, labels=self.train_dataset.labels),shuffle=True)
             else: 
                 self.train_sampler = DistributedSampler(self.train_dataset, shuffle=True)
         else:
