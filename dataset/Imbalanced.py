@@ -7,6 +7,7 @@ from datasets import load_dataset
 from .transform import get_imagenet_transforms
 from .augmentations import CIFAR10Policy
 import os
+import json
 
 
 def get_cifar_dataset(dataset_name:str, root:str, imb_type:str, imb_factor:float, rand_number=0, train=True, transform=None, target_transform=None, download=True,):
@@ -109,20 +110,49 @@ class Large_dataset(Dataset):
         self.labels = []
         self.transform = transform 
         self.use_randaug = use_randaug
-        txt = 'ImageNet_LT_train.txt' if train else 'ImageNet_LT_test.txt'
-        with open(os.path.join(root, txt)) as f:
-            for line in f:
-                img_path, label = line.split()
-                self.img_path.append(os.path.join(root, img_path.strip()))
-                self.labels.append(int(label.strip()))
-        self.targets = self.labels 
+        self.dataset_name='inat' if 'inat' in root else 'imagenet_lt'
+        if self.dataset_name == 'imagenet_lt':
+            txt = 'ImageNet_LT_train.txt' if train else 'ImageNet_LT_test.txt' 
+
+            with open(os.path.join(root, txt)) as f:
+                for line in f:
+                    img_path, label = line.split()
+                    self.img_path.append(os.path.join(root, img_path.strip()))
+                    self.labels.append(int(label.strip()))
+            self.targets = self.labels 
+        else:
+            post = 'train' if train else 'val'
+            json_path = os.path.join(root, f'{post}.json')
+            with open(json_path, 'r') as f:
+                dataset_json = json.load(f)
+
+            images = dataset_json.get('images', [])
+            annotations = dataset_json.get('annotations', [])
+
+            image_id_to_path = {}
+            for image_item in images:
+                file_name = image_item.get('file_name')
+                image_id = image_item.get('id')
+                if file_name is None or image_id is None:
+                    continue
+                image_id_to_path[image_id] = os.path.join(root, file_name)
+
+            for annotation in annotations:
+                image_id = annotation.get('image_id')
+                category_id = annotation.get('category_id')
+                if image_id in image_id_to_path and category_id is not None:
+                    self.img_path.append(image_id_to_path[image_id])
+                    self.labels.append(int(category_id))
+
+            self.targets = self.labels 
+
         self.img_num_list = self.get_img_num_per_cls()
 
     def get_img_num_per_cls(self):
         from collections import Counter
         counter = Counter(self.labels)
         num_classes = max(counter.keys())+1
-        result = [0]*1000
+        result = [0]*num_classes
         for key, value in counter.items():
             result[key] = value
         return np.array(result)

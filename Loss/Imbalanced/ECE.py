@@ -46,10 +46,7 @@ class ECELoss:
                                     normalize='unit',
                                     temperature=temp,
                                     max_iter=max_iter)
-        if args.world_size ==1 : 
-            self.kmeans = kmeans.cuda()
-        else:
-            self.kmeans = DDP(kmeans.cuda(),device_ids=[args.local_rank],find_unused_parameters=True)
+        self.kmeans = kmeans.cuda()
         self.hard_weight = hard_weight
         self.soft_weight = soft_weight
         self.surrogate = surrogate
