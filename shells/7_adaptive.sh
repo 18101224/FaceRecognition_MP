@@ -9,7 +9,7 @@ make_cmd(){
 }
 
 
-make_cmd '--ece_weight=0.3' &
-make_cmd '--ece_weight=0.5' &
-make_cmd '--ece_weight=1' &
+make_cmd '--ece_weight=0.3 --surrogate=True' &
+make_cmd '--ece_weight=0.5 --surrogate=True' &
+make_cmd '--ece_weight=1 --surrogate=True' &
 wait
