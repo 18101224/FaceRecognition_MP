@@ -36,7 +36,6 @@ for epoch in range(10):
     acc = 0
     with torch.no_grad() : 
         for img, label in tqdm(valid_loader) : 
-            img = img[0]
             img = img.to(device)
             label = label.to(device)
             pred = model(img, features=False)
