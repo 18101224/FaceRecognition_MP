@@ -1,32 +1,33 @@
-import torch  # type: ignore[import-not-found]
+from models import ImbalancedModel
+from dataset import FER, get_transform, ImbalancedDatasetSampler
+import torch
+from argparse import Namespace
+from torch.utils.data import DataLoader
+from opt import SAM
 
 
-def main() -> None:
-    torch.manual_seed(0)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('mps')
+model = ImbalancedModel(num_classes=7, model_type='ir50', feature_branch=False)
+model = model.to(device)
 
-    num_rows, dim = 1000, 2048
-    w = torch.nn.Parameter(torch.randn((num_rows, dim), device=device))
-    optimizer = torch.optim.SGD([w], lr=0.1)
+args = Namespace(**{'dataset_path':'/Users/seominjae/data/RAF-DB','dataset_name':'RAF-DB'})
+train_transfrom = get_transform(args,train=True)
+valid_transfrom = get_transform(args,train=False)
+train_dataset = FER(args,train_transfrom,train=True, idx=False)
+valid_dataset = FER(args,valid_transfrom,train=False, idx=False)
+train_loader = DataLoader(train_dataset,batch_size=128,shuffle=False, sampler=ImbalancedDatasetSampler(train_dataset,labels=train_dataset.labels))
+valid_loader = DataLoader(valid_dataset,batch_size=128,shuffle=False)
 
-    mask_upper = torch.triu(
-        torch.ones((num_rows, num_rows), dtype=torch.bool, device=device),
-        diagonal=1,
-    )
-
-    for step in range(1000):
-        optimizer.zero_grad()
-        normalized_w = torch.nn.functional.normalize(w, dim=1)
-        sims = normalized_w @ normalized_w.T
-        elements = sims[mask_upper]
-        loss = elements.mean() + elements.std()
+opt = SAM(model.parameters(),torch.optim.AdamW,lr=0.00001,weight_decay=0.001,adaptive=True)
+for epoch in range(10):
+    for img , label in train_loader : 
+        img = img.to(device)
+        label = label.to(device)
+        pred = model(img, features=False)
+        loss = torch.nn.functional.cross_entropy(pred, label)
         loss.backward()
-        optimizer.step()
-        with torch.no_grad():
-            w.copy_(torch.nn.functional.normalize(w, dim=1))
-        if (step + 1) % 100 == 0:
-            print(f"step {step + 1}: loss={loss.item():.6f}")
-
-
-if __name__ == "__main__":
-    main()
+        opt.first_step(zero_grad=True)
+        pred = model(img, features=False)
+        loss = torch.nn.functional.cross_entropy(pred, label)
+        loss.backward()
+        opt.second_step(zero_grad=True)

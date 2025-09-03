@@ -121,7 +121,7 @@ class Large_dataset(Dataset):
                     img_path, label = line.split()
                     self.img_path.append(os.path.join(root, img_path.strip()))
                     self.labels.append(int(label.strip()))
-            self.targets = self.labels 
+
         else:
             post = 'train' if train else 'val'
             json_path = os.path.join(root, f'{post}2018.json')
@@ -146,8 +146,7 @@ class Large_dataset(Dataset):
                     self.img_path.append(image_id_to_path[image_id])
                     self.labels.append(int(category_id))
 
-            self.targets = self.labels 
-
+        self.targets = self.labels 
         self.img_num_list = self.get_img_num_per_cls()
 
     def get_img_num_per_cls(self):
