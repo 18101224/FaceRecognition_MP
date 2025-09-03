@@ -144,7 +144,8 @@ class ImbalancedModel(nn.Module):
     # The model_dict dictionary maps model type strings to their corresponding constructor functions.
     # You can use it to dynamically select and instantiate a model based on a string key.
     model_dict = {
-        'resnet32': resnet32_backbone,
+        'resnet32_64d': partial(resnet32_backbone, factor=1),
+        'resnet32_128d': partial(resnet32_backbone, factor=2),
         'resnet50': partial(resnet50_backbone, pretrained=False),
         'resnext50': partial(resnext50_backbone, pretrained=False),
         'ir50': partial(ir50_backbone, checkpoint_path='checkpoint/ir50.pth'),
@@ -152,7 +153,8 @@ class ImbalancedModel(nn.Module):
         'e2_resnext50': e2_resnext50
     }
     dim_dict = {
-        'resnet32': (128, 512, 128),
+        'resnet32_64d': (64, 512, 128),
+        'resnet32_128d': (128, 512, 128),
         'resnet50': (2048, 2048, 1024),
         'resnext50': (2048, 2048, 1024),
         'ir50': (256, 512, 128),

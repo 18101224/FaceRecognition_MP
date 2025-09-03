@@ -48,12 +48,11 @@ class BasicBlock_s(nn.Module):
         return out
 
 
-def get_backbone(name, block, layers, groups=1, width_per_group=64):
+def get_backbone(name, block, layers,factor=1, groups=1, width_per_group=64):
     if name == 'resnet32':
         class ResNet_s(nn.Module):
-            def __init__(self, block, num_blocks):
+            def __init__(self, block, num_blocks, factor=1):
                 super(ResNet_s, self).__init__()
-                factor = 2
                 self.in_planes = 16*factor
                 self.conv1 = nn.Conv2d(3, 16 * factor, kernel_size=3, stride=1, padding=1, bias=False)
                 self.bn1 = nn.BatchNorm2d(16 * factor)
@@ -134,11 +133,11 @@ def resnext50_backbone(pretrained=False):
     del model.fc 
     return model 
 
-def resnet32_backbone():
+def resnet32_backbone(factor=1):
     '''
     64 dimensions
     '''
-    model = get_backbone(name='resnet32',block=BasicBlock_s, layers=[5,5,5])
+    model = get_backbone(name='resnet32',block=BasicBlock_s, layers=[5,5,5], factor=factor)
     return model 
 
 def get_resnet(architecture, pretrained=False):

@@ -51,7 +51,7 @@ class ECELoss:
         self.soft_weight = soft_weight
         self.surrogate = surrogate
         if not surrogate :
-            self.rho = 1/(num_classes-1)
+            self.rho = -1/(num_classes-1) ## 이거 원래 -1 아니었음 !! 
 
     def __call__(self, weight):
         '''
@@ -66,12 +66,13 @@ class ECELoss:
         else:
             weight_matrix = torch.ones([weight.shape[0]]*2).to(weight.device)
         sims = weight@weight.T 
+        triu_indices = torch.triu_indices(sims.shape[0], sims.shape[1], offset=1)
         if self.surrogate :
-            std = torch.triu(sims, diagonal=1).reshape(-1).std()
-            mean = torch.triu(sims*weight_matrix,diagonal=1).reshape(-1).sum()
+            std = sims[triu_indices].reshape(-1).std()
+            mean = sims[triu_indices]*weight_matrix[triu_indices].reshape(-1).mean()
             loss = mean*(int(bool(self.args.use_mean)))+std
         else: 
-            loss = torch.triu(((sims-self.rho)**2)*weight_matrix, diagonal=1).reshape(-1).sum()
+            loss = (((sims[triu_indices]-self.rho)**2).reshape(-1)*weight_matrix[triu_indices]).reshape(-1).mean()
         return loss*self.args.ece_weight
 
 

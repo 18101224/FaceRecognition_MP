@@ -34,7 +34,7 @@ def get_transform(args, train):
             ]),
             'imagenet_lt' : transforms.Compose([
                 transforms.Resize(256),
-                transforms.CenterCrop(224),
+                transforms.CenterCrop(224 if args.dataset_name != 'imagenet_lt_small' else 112),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=imgnet_mean, std=imgnet_std)
             ]),
@@ -48,6 +48,8 @@ def get_transform(args, train):
             'AffectNet' : validation_transforms['RAF-DB'],
             **validation_transforms
         }
+        if 'imagenet_lt_small' == args.dataset_name : 
+            dataset_name='imagenet_lt'
         return validation_transforms[dataset_name]
 
     
@@ -70,7 +72,7 @@ def get_transform(args, train):
         ])]*3, 
         'imagenet_lt': [
             transforms.Compose([
-                transforms.RandomResizedCrop(224),*large_size_tr,
+                transforms.RandomResizedCrop(224 if args.dataset_name != 'imagenet_lt_small' else 112),*large_size_tr,
                 transforms.Normalize(mean=imgnet_mean, std=imgnet_std)
             ])
             ],
@@ -111,7 +113,7 @@ def get_transform(args, train):
             ])],
             'imagenet_lt': [
                 transforms.Compose([
-                  transforms.RandomResizedCrop(224,scale=(0.08,1.)),
+                  transforms.RandomResizedCrop(224 if args.dataset_name != 'imagenet_lt_small' else 112,scale=(0.08,1.)),
                   transforms.RandomHorizontalFlip(),
                   transforms.RandomApply([transforms.ColorJitter(0.4,0.4,0.4,0.0)],p=1.),
                   ImageNetPolicy(),
@@ -119,7 +121,7 @@ def get_transform(args, train):
                   transforms.Normalize(mean=imgnet_mean, std=imgnet_std)
                 ]),
                 transforms.Compose([
-                    transforms.RandomResizedCrop(224),
+                    transforms.RandomResizedCrop(224 if args.dataset_name != 'imagenet_lt_small' else 112),
                     transforms.RandomHorizontalFlip(),
                     transforms.RandomApply([transforms.ColorJitter(0.4,0.4,0.4,0.1)],p=0.8),
                     transforms.RandomGrayscale(p=0.2),
@@ -159,12 +161,12 @@ def get_transform(args, train):
             ],
             'imagenet_lt': [
                 transforms.Compose([
-                  transforms.RandomResizedCrop(224,scale=(0.08,1.)),
+                  transforms.RandomResizedCrop(224 if args.dataset_name != 'imagenet_lt_small' else 112,scale=(0.08,1.)),
                   *large_before,
                   transforms.Normalize(mean=imgnet_mean, std=imgnet_std)
                 ]),
                 *[transforms.Compose([
-                    transforms.RandomResizedCrop(224),
+                    transforms.RandomResizedCrop(224 if args.dataset_name != 'imagenet_lt_small' else 112),
                     *large_after,
                     transforms.Normalize(mean=imgnet_mean, std=imgnet_std)
                 ])]*2
@@ -198,7 +200,8 @@ def get_transform(args, train):
         raise ValueError(f"Loss {args.loss} not supported")
     if not getattr(args, 'aug', False) :
         tr_dict[dataset_name][0].transforms.pop(2)
-
+    if 'imagenet_lt_small' == args.dataset_name : 
+        dataset_name='imagenet_lt'
     return tr_dict[dataset_name]
 
 
