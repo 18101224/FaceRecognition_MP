@@ -254,7 +254,7 @@ class Trainer:
                 self.train_sampler = DistributedSampler(self.train_dataset, shuffle=True)
         else:
             if args.use_sampler : 
-                self.train_sampler = ImbalancedDatasetSampler(dataset=self.train_dataset,labels=self.train_dataset.labels, shuffle=True)
+                self.train_sampler = ImbalancedDatasetSampler(dataset=self.train_dataset,labels=self.train_dataset.labels)
             else:
                 self.train_sampler = None
         self.test_sampler = DistributedSampler(self.test_dataset, shuffle=False) if args.world_size > 1 else None
