@@ -4,6 +4,7 @@ import torch
 from argparse import Namespace
 from torch.utils.data import DataLoader
 from opt import SAM
+from tqdm import tqdm 
 
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('mps')
@@ -19,7 +20,8 @@ valid_loader = DataLoader(valid_dataset,batch_size=128,shuffle=False)
 
 opt = SAM(model.parameters(),torch.optim.AdamW,lr=0.00001,weight_decay=0.001,adaptive=True)
 for epoch in range(10):
-    for img , label in train_loader : 
+    for img , label in tqdm(train_loader) : 
+        img = img[0]
         img = img.to(device)
         label = label.to(device)
         pred = model(img, features=False)
@@ -30,3 +32,19 @@ for epoch in range(10):
         loss = torch.nn.functional.cross_entropy(pred, label)
         loss.backward()
         opt.second_step(zero_grad=True)
+    model.eval()
+    acc = 0
+    with torch.no_grad() : 
+        for img, label in tqdm(valid_loader) : 
+            img = img[0]
+            img = img.to(device)
+            label = label.to(device)
+            pred = model(img, features=False)
+            loss = torch.nn.functional.cross_entropy(pred, label)
+            bs = label.shape[0]
+            pred = torch.argmax(pred, dim=1)
+            acc += (pred == label).mean().item() * bs 
+        acc = acc/len(valid_loader.dataset)
+        print(acc)
+    print(f'epoch {epoch} acc {acc/len(valid_loader.dataset)}')
+    model.train()
