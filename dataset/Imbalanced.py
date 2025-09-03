@@ -10,6 +10,8 @@ import os
 import json
 
 
+__all__ = ['get_cifar_dataset', 'Large_dataset']
+
 def get_cifar_dataset(dataset_name:str, root:str, imb_type:str, imb_factor:float, rand_number=0, train=True, transform=None, target_transform=None, download=True,):
     class CIFAR(torchvision.datasets.CIFAR10):
         def __init__(self, root, train, transform=None, target_transform=None, download=True, imb_type=None, imb_factor=None, rand_number=None):
