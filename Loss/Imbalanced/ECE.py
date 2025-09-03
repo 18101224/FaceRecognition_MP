@@ -73,9 +73,7 @@ class ECELoss:
             mean = (sims[triu_indices]*weight_matrix[triu_indices]).reshape(-1).mean()
             loss = self.mean_weight*mean*(int(bool(self.args.use_mean)))+self.std_weight*std
         else: 
-            loss = (((sims[triu_indices]-self.rho)**2).reshape(-1)*weight_matrix[triu_indices]).reshape(-1).mean()
+            loss = (((sims[triu_indices]-self.rho)**2)*weight_matrix[triu_indices]).reshape(-1).mean()
         return loss*self.args.ece_weight
 
 
-        
-        
