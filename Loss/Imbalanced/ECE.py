@@ -71,6 +71,7 @@ class ECELoss:
         if self.surrogate :
             std = sims[triu_indices].reshape(-1).std()
             mean = (sims[triu_indices]*weight_matrix[triu_indices]).reshape(-1).mean()
+            print(std.shape, mean.shape)
             loss = self.mean_weight*mean*(int(bool(self.args.use_mean)))+self.std_weight*std
         else: 
             loss = (((sims[triu_indices]-self.rho)**2).reshape(-1)*weight_matrix[triu_indices]).reshape(-1).mean()
