@@ -10,7 +10,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('mp
 model = ImbalancedModel(num_classes=7, model_type='ir50', feature_branch=False)
 model = model.to(device)
 
-args = Namespace(**{'dataset_path':'/Users/seominjae/data/RAF-DB','dataset_name':'RAF-DB'})
+args = Namespace(**{'dataset_path':'/Users/seominjae/data/RAF-DB','dataset_name':'RAF-DB','loss':'CE'})
 train_transfrom = get_transform(args,train=True)
 valid_transfrom = get_transform(args,train=False)
 train_dataset = FER(args,train_transfrom,train=True, idx=False)
