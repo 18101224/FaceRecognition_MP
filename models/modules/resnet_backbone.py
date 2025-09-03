@@ -80,7 +80,7 @@ def get_backbone(name, block, layers,factor=1, groups=1, width_per_group=64):
                 out = F.avg_pool2d(out, out.size()[3])
                 out1 = out.view(out.size(0), -1)
                 return out1
-        return ResNet_s(block, layers)
+        return ResNet_s(block, layers,factor=factor)
     else:
         class ResNet_backbone(ResNet):
             def __init__(self, block, layers, groups=1, width_per_group=64):
