@@ -389,12 +389,13 @@ def plot_angle_matrix(angle_matrices, save_path: str, model_names=None, dataset_
         model_names (list of str or None): Optional list of model names for annotation
         abs_statistics (tuple or None): (mean, std) to use as base and range
     """
+    
     statistics_dict = {
-        'cifar10': (96,10),
-        'cifar100': (90.5,10),
-        'imagenet_lt': (90,10),
-        'RAF-DB': (110, 10),
-        'AffectNet': (110, 10)
+        'cifar10': (np.arccos(-1/9)*180.0/np.pi,10),
+        'cifar100': (np.arccos(-1/99)*180.0/np.pi,10),
+        'imagenet_lt': (np.arccos(-1/999)*180.0/np.pi,10),
+        'RAF-DB': (np.arccos(-1/6)*180.0/np.pi, 10),
+        'AffectNet': (np.arccos(-1/6)*180.0/np.pi, 10)
     }
     abs_statistics = statistics_dict[dataset_name]
     # Handle single matrix input
