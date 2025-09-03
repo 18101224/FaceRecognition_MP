@@ -151,6 +151,8 @@ def get_args():
     args.add_argument('--regular_simplex', default=False)
     args.add_argument('--splitted_contrastive_learning', default=False)
     args.add_argument('--use_mean', default=False)
+    args.add_argument('--std_weight', type=float, default=1.0)
+    args.add_argument('--mean_weight', type=float, default=1.0)
     args.add_argument('--surrogate', default=False)
     args.add_argument('--k',type=int)
     args.add_argument('--hard_weight', type=float, default=1)
@@ -167,7 +169,7 @@ def get_args():
     args.add_argument('--imb_type', type=str, choices=['exp','step'], default='exp')
     args.add_argument('--aug', default=False)
     args.add_argument('--cutout', default=False)
-    
+    ##
     args = args.parse_args() 
 
     vars(args)['server'] = os.getenv('SERVER','0')
@@ -317,7 +319,8 @@ class Trainer:
         if include(self.args.loss, ['BCL']) :
             self.bcl = BCLLoss(cls_num_list=self.train_dataset.img_num_list, args=self.args, temperature=self.args.temperature)
         if include(self.args.loss, ['ECE']) :
-            self.ece = ECELoss(args=self.args, k=self.args.k, hard_weight=self.args.hard_weight, soft_weight=self.args.soft_weight, num_classes=np.max(self.train_dataset.labels)+1, surrogate=self.args.surrogate)
+            self.ece = ECELoss(args=self.args, k=self.args.k, hard_weight=self.args.hard_weight, soft_weight=self.args.soft_weight, num_classes=np.max(self.train_dataset.labels)+1, surrogate=self.args.surrogate, 
+            std_weight=getattr(args, 'std_weight', 1.0), mean_weight=getattr(args, 'mean_weight', 1.0))
         #############################################
         #### 📊 METRICS & LOGGING INITIALIZATION ####
         #############################################
