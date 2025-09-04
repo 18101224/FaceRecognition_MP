@@ -415,9 +415,7 @@ class Trainer:
         """Run forward pass for training with optional margin and angle loss."""
         if getattr(self,'aligner',None) is not None and kp is None:
             _,_,kp,_,_,_ = self.aligner(images)
-            processed_feat, outputs, centers = self.model(images, keypoint=kp, features=True) 
-        else:
-            processed_feat, outputs, centers = self.model(images, features=True) 
+        processed_feat, outputs, centers = self.model(images, keypoint=kp, features=True)  
         original_outputs = deepcopy(outputs.detach())
         losses = []
         losses_for_log = defaultdict(int)
