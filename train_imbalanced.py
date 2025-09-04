@@ -23,6 +23,7 @@ from opt import adjust_learning_rate, get_scheduler, get_optimizer, SAM
 import time 
 from torch.profiler import profile, schedule, ProfilerActivity
 import random
+from aligners import get_aligner
 
 # random.seed(42)
 # np.random.seed(42)
@@ -290,6 +291,12 @@ class Trainer:
         
         self.model = get_model(args)
         self.model = self.model.to(self.device)
+
+        if args.model_type == 'kp_rpe':
+            self.aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m')
+            self.aligner = self.aligner.to(self.device)
+            self.aligner.eval()
+        
         
         if args.world_size > 1:
             self.model = DDP(self.model, device_ids=[args.local_rank],find_unused_parameters=True)
@@ -404,9 +411,15 @@ class Trainer:
             resume='allow',
         )
     
-    def run_train_forward(self, images, labels, train=True):
+    def run_train_forward(self, images, labels, train=True, kp=None):
         """Run forward pass for training with optional margin and angle loss."""
-        processed_feat, outputs, centers = self.model(images, features=True) # projected_features, logits, projected_centers
+        if getattr(self,'aligner',None) is not None and kp is None:
+            _,_,kp,_,_,_ = self.aligner(images)
+            print(kp)
+            import sys; sys.exit()
+            processed_feat, outputs, centers = self.model(images, keypoint=kp, features=True) 
+        else:
+            processed_feat, outputs, centers = self.model(images, features=True) 
         original_outputs = deepcopy(outputs.detach())
         losses = []
         losses_for_log = defaultdict(int)
@@ -434,7 +447,7 @@ class Trainer:
                 losses_for_log['ECE'] = ece.detach().cpu().item()
         else:
             losses = torch.nn.functional.cross_entropy(outputs, labels)
-        return losses, original_outputs, outputs, losses_for_log
+        return losses, original_outputs, outputs, losses_for_log, kp
     
     def train_epoch(self):
         self.model.train()
@@ -455,12 +468,12 @@ class Trainer:
             batch_size = labels.shape[0]
             # First forward-backward pass
             self.optimizer.zero_grad()
-            losses, original_outputs, outputs, temp_losses = self.run_train_forward(images, labels)
+            losses, original_outputs, outputs, temp_losses, kp = self.run_train_forward(images, labels, train=True)
             loss = sum(losses)
             loss.backward()
             if isinstance(self.optimizer, SAM):
                 self.optimizer.first_step(zero_grad=True)
-                losses, original_outputs, outputs, temp_losses = self.run_train_forward(images, labels, train=True)
+                losses, original_outputs, outputs, temp_losses, _ = self.run_train_forward(images, labels, train=True, kp=kp)
                 loss = sum(losses)
                 loss.backward()
                 self.optimizer.second_step(zero_grad=True)
@@ -512,7 +525,7 @@ class Trainer:
             images, labels = images.to(self.device), labels.to(self.device)
             batch_size = images.size(0)
             # Forward pass
-            loss, _, outputs, _ = self.run_train_forward(images, labels, train=False)
+            loss, _, outputs, _ , _= self.run_train_forward(images, labels, train=False, kp=None)
             # Calculate metrics
             total_loss += loss.item() * batch_size
             total_acc += self._get_acc(outputs, labels) * batch_size
