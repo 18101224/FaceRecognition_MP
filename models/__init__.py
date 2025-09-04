@@ -202,8 +202,7 @@ class ImbalancedModel(nn.Module):
                     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                         nn.init.kaiming_normal_(m.weight)
 
-        
-
+    
 
     def get_kernel(self):
         if self.cos : 
@@ -215,7 +214,11 @@ class ImbalancedModel(nn.Module):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
-        z = self.backbone(x, keypoint) if keypoint is not None else self.backbone(x)
+        if keypoint is not None:
+            print(keypoint.shape)
+            z = self.backbone(x, keypoint) 
+        else:
+            z = self.backbone(x)
         z = nn.functional.normalize(z, dim=-1) if self.cos else z
         z_ = nn.functional.normalize(self.feature_module(z), dim=-1) if self.feature_module is not False else z 
         
