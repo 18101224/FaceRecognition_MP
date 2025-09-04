@@ -84,7 +84,7 @@ class CosClassifier(Classifier):
 
 
 
-def get_kprpe_pretrained(cfg_path,token_path,force_download):
+def get_kprpe_pretrained(cfg_path,token_path=False,force_download=False):
     if not token_path :
         cfg = OmegaConf.load(os.path.join(cfg_path,'model.yaml'))
         model = load_model(cfg)
