@@ -32,7 +32,7 @@ make_cmd () {
         --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
           --cos=True --momentum=0.9 --world_size=1 \
         --model_type=kp_rpe  --imb_type=exp --imb_factor=0.01 \
-        --dataset_path=../data/RAF-DB_aligned --dataset_name=RAF-DB --use_sampler=True --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True --num_workers=32 \
+        --dataset_path=../data/RAF-DB_aligned --dataset_name=RAF-DB --use_sampler=True --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True --cosine_constant_margin=0.5 --num_workers=32 \
            --temperature=0.1 --scheduler=warmup  $EXTRA
 }
 

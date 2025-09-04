@@ -215,7 +215,6 @@ class ImbalancedModel(nn.Module):
         returns : backbone_feature, rotated_feature, logit
         '''
         if keypoint is not None:
-            print(keypoint.shape)
             z = self.backbone(x, keypoint) 
         else:
             z = self.backbone(x)

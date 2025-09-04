@@ -92,16 +92,16 @@ def get_dataset(args, train:bool):
 def get_model(args):
     if 'cifar' in args.dataset_name:
         n_c = 100 if '100' in args.dataset_name else 10
-        model = ImbalancedModel(num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+        model = ImbalancedModel(cos=args.cos, num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
         return model
     elif 'imagenet_lt' == args.dataset_name:
-        model = ImbalancedModel(num_classes=1000, model_type=args.model_type)
+        model = ImbalancedModel(cos=args.cos, num_classes=1000, model_type=args.model_type)
         return model
     elif 'inat' == args.dataset_name:
-        model = ImbalancedModel(num_classes=8142, model_type=args.model_type)
+        model = ImbalancedModel(cos=args.cos, num_classes=8142, model_type=args.model_type)
         return model
     elif 'RAF-DB' == args.dataset_name or 'AffectNet' == args.dataset_name:
-        model = ImbalancedModel(num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+        model = ImbalancedModel(cos=args.cos, num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
         return model
     else:
         raise ValueError(f'Dataset {args.dataset_name} not supported')
@@ -430,7 +430,9 @@ class Trainer:
                 losses_for_log['BCL'] = bcl.detach().cpu().item() # weight 적용 전 
             
             if include(self.args.loss, ['CE']) and not include(self.args.loss, ['BCL']): 
-                loss = torch.nn.functional.cross_entropy(outputs*self.args.cosine_scaling, labels)
+                margin = torch.zeros_like(outputs,device=outputs.device)
+                margin[torch.arange(labels.shape[0]),labels] = self.args.cosine_constant_margin
+                loss = torch.nn.functional.cross_entropy((outputs-margin)*self.args.cosine_scaling, labels)
             losses.append(loss*self.args.ce_weight)
             losses_for_log['CE'] = loss.detach().cpu().item()
 
