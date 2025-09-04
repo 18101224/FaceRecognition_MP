@@ -2,7 +2,7 @@
 make_cmd () {
 
   local EXTRA=$1        # loss·weight·스케줄 인자 묶음
-  CUDA_VISIBLE_DEVICES=0,2 torchrun --nproc_per_node=2 train_imbalanced.py \
+  CUDA_VISIBLE_DEVICES=0,2 /home/gpuadmin/anaconda3/envs/main/bin/torchrun --nproc_per_node=2 train_imbalanced.py \
         --batch_size=64 --n_epochs=200 --weight_decay=5e-4 \
           --cos=True --momentum=0.9 --world_size=2 \
         --model_type=ir50  --imb_type=exp --imb_factor=0.01 \
