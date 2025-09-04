@@ -29,7 +29,7 @@ make_cmd () {
 
   local EXTRA=$1        # loss·weight·스케줄 인자 묶음
   python3 train_imbalanced.py \
-        --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
+        --batch_size=24 --n_epochs=200 --weight_decay=5e-4 \
           --cos=True --momentum=0.9 --world_size=1 \
         --model_type=kp_rpe  --imb_type=exp --imb_factor=0.01 \
         --dataset_path=../data/RAF-DB_aligned --dataset_name=RAF-DB --use_sampler=True --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True --num_workers=32 \
