@@ -38,7 +38,8 @@ make_cmd () {
 
 
 
-CUDA_VISIBLE_DEVICES=0 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=1" 
-CUDA_VISIBLE_DEVICES=1 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=4" 
-CUDA_VISIBLE_DEVICES=2 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=16" 
-CUDA_VISIBLE_DEVICES=3 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=32" 
+CUDA_VISIBLE_DEVICES=0 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=1"  &
+CUDA_VISIBLE_DEVICES=1 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=4"  &
+CUDA_VISIBLE_DEVICES=2 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=16" & 
+CUDA_VISIBLE_DEVICES=3 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=32" &
+wait  
