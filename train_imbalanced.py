@@ -73,7 +73,7 @@ def profile_train_if_enabled(func):
             return result
     return wrapper
 
-def get_dataset(args, train:bool):
+def get_dataset(args, train:bool, balanced=False):
     dataset_name = args.dataset_name
     if 'cifar' in dataset_name:
         transform = get_transform(args=args, train=train)
@@ -83,7 +83,7 @@ def get_dataset(args, train:bool):
         result = Large_dataset(root=args.dataset_path, train=train, transform=transform)
     elif 'RAF-DB' == dataset_name or 'AffectNet' == dataset_name:
         transform = get_transform(args,train=train)
-        result = FER(args=args, train=train, transform=transform, idx=False)
+        result = FER(args=args, train=train, transform=transform, idx=False, balanced=balanced)
     else:
         raise ValueError(f'Dataset {args.dataset_name} not supported')
     return result 
@@ -248,6 +248,18 @@ class Trainer:
 
         self.train_dataset = get_dataset(args, train=True)
         self.test_dataset = get_dataset(args, train=False)
+        if 'RAF' in args.dataset_name:
+            self.test_balanced_dataset = get_dataset(args, train=False, balanced=True)
+            self.test_balanced_sampler = DistributedSampler(self.test_balanced_dataset, shuffle=False) if args.world_size > 1 else None
+            self.test_balanced_loader = DataLoader(
+                self.test_balanced_dataset,
+                batch_size=args.batch_size,
+                shuffle=False,
+                sampler=self.test_balanced_sampler,
+                num_workers=self.args.num_workers,
+                persistent_workers=(self.args.num_workers > 1),
+                pin_memory=True
+            )
         
         # Create samplers for distributed training
         if args.world_size > 1 :
@@ -333,6 +345,7 @@ class Trainer:
         #############################################
         self.best_acc = 0
         self.best_macro_acc = 0
+        self.best_acc_balanced = 0
         self.weight_matrix= []
         losses = get_losses(self.args.loss)
         self.log = {
@@ -511,13 +524,13 @@ class Trainer:
         return avg_acc, avg_macro_acc
     
     @torch.no_grad()
-    def evaluate(self):
+    def evaluate(self,loader, dataset):
         self.model.eval()
         total_loss = 0
         total_acc = 0
         total_macro_accs = torch.zeros((len(self.validation_class_dist)),device=self.device)
         
-        for images, labels in tqdm(self.test_loader, disable=self.args.world_size > 1 and self.args.rank != 0):
+        for images, labels in tqdm(loader, disable=self.args.world_size > 1 and self.args.rank != 0):
             if isinstance(images, list):
                 images = images[0]
             images, labels = images.to(self.device), labels.to(self.device)
@@ -530,7 +543,7 @@ class Trainer:
             total_macro_accs += self._get_macro_acc(outputs, labels) 
         
         # Average metrics
-        total_samples = len(self.test_dataset)
+        total_samples = len(dataset)
         avg_loss = total_loss / total_samples
         avg_acc = total_acc / total_samples
         avg_macro_acc = torch.mean(total_macro_accs.reshape(1,-1) / self.validation_class_dist.reshape(1,-1)).detach().cpu().item()
@@ -569,7 +582,7 @@ class Trainer:
         plot_angle_matrix(angles, f'checkpoint/{self.id}/angle_mat/{str(epoch).zfill(4)}.png', dataset_name=self.args.dataset_name)
 
 
-    def save_checkpoint(self, epoch, is_best=False, is_best_macro=False):
+    def save_checkpoint(self, epoch, is_best=False, is_best_macro=False, is_best_balanced=False):
         if self.args.world_size > 1 and self.args.rank != 0:
             return
         
@@ -587,6 +600,7 @@ class Trainer:
             'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler is not None else None,
             'best_acc': self.best_acc,
             'best_macro_acc': self.best_macro_acc,
+            'best_acc_balanced': self.best_acc_balanced,
             'log': self.log,
             'args': self.args,
             'id': self.id,
@@ -604,6 +618,9 @@ class Trainer:
         if is_best_macro:
             torch.save(checkpoint, f'{save_dir}/best_macro_acc.pth')
         
+        if is_best_balanced:
+            torch.save(checkpoint, f'{save_dir}/best_acc_balanced.pth')
+        
         torch.save(checkpoint, f'{save_dir}/latest.pth')
         # Save periodic checkpoint
     
@@ -620,7 +637,9 @@ class Trainer:
             train_acc, train_macro_acc = self.train_epoch()
             
             # Evaluation
-            test_loss, test_acc, test_macro_acc = self.evaluate()
+            test_loss, test_acc, test_macro_acc = self.evaluate(self.test_loader, self.test_dataset)
+            if 'RAF' in self.args.dataset_name:
+                test_loss_balanced, test_acc_balanced, _ = self.evaluate(self.test_balanced_loader, self.test_balanced_dataset)
             
             # Update learning rate
 
@@ -628,10 +647,13 @@ class Trainer:
             # Update best metrics
             is_best = test_acc > self.best_acc
             is_best_macro = test_macro_acc > self.best_macro_acc
+            is_best_balanced = test_acc_balanced > self.best_acc_balanced
             if is_best:
                 self.best_acc = test_acc
             if is_best_macro:
                 self.best_macro_acc = test_macro_acc
+            if is_best_balanced:
+                self.best_acc_balanced = test_acc_balanced
             
             # Update logs
 
@@ -640,7 +662,7 @@ class Trainer:
             self.log['test_acc'].append(test_acc)
             self.log['test_macro_acc'].append(test_macro_acc)
             # Save checkpoint
-            self.save_checkpoint(epoch, is_best, is_best_macro)
+            self.save_checkpoint(epoch, is_best, is_best_macro, is_best_balanced)
             
             # Log to wandb
             if self.args.world_size == 1 or self.args.rank == 0 :
@@ -649,9 +671,11 @@ class Trainer:
                     'train_macro_acc': train_macro_acc,
                     'test_loss': test_loss,
                     'test_acc': test_acc,
+                    'test_acc_balanced': test_acc_balanced,
                     'test_macro_acc': test_macro_acc,
                     'best_acc': self.best_acc,
                     'best_macro_acc': self.best_macro_acc,
+                    'best_acc_balanced': self.best_acc_balanced,
                     'ece_weight': self.args.ece_weight,
                     'lr': temp_lr,
                 }

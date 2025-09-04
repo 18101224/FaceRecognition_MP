@@ -21,17 +21,13 @@ from .sampler_wrapper import DistributedSamplerWrapper
 import numpy as np
 from collections import Counter
 
-def exc_label(i):
-    # Affect to RAF label
-    label = [6,3,4,0,1,2,5]
-    return label[i]
 
 class FER(Dataset):
-    def __init__(self,args,transform,train=True, idx=True):
+    def __init__(self,args,transform,train=True, idx=True, balanced=False):
         super().__init__()
         self.root = args.dataset_path
         self.train = train
-        post = 'train' if train else 'valid' if 'RAF' in self.root else 'test'
+        post = 'train' if train else ('test' if 'Affect' in self.root else ('valid' if ))
         offset = 1 if 'RAF' in self.root else 0 
         self.transform=transform
         self.paths = []

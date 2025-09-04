@@ -1,50 +1,16 @@
-from models import ImbalancedModel
-from dataset import FER, get_transform, ImbalancedDatasetSampler
-import torch
-from argparse import Namespace
-from torch.utils.data import DataLoader
-from opt import SAM
-from tqdm import tqdm 
+import pandas as pd
+import os, shutil 
 
-
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('mps')
-model = ImbalancedModel(num_classes=7, model_type='ir50', feature_branch=False)
-model = model.to(device)
-args = Namespace(**{'dataset_path':'../data/RAF-DB','dataset_name':'RAF-DB','loss':'CE','model_type':'ir50'})
-train_transfrom = get_transform(args,train=True)
-valid_transfrom = get_transform(args,train=False)
-train_dataset = FER(args,train_transfrom,train=True, idx=False)
-valid_dataset = FER(args,valid_transfrom,train=False, idx=False)
-train_loader = DataLoader(train_dataset,batch_size=128,shuffle=False, sampler=ImbalancedDatasetSampler(train_dataset,labels=train_dataset.labels))
-valid_loader = DataLoader(valid_dataset,batch_size=128,shuffle=False)
-
-opt = SAM(model.parameters(),torch.optim.AdamW,lr=0.00001,weight_decay=0.001,adaptive=True)
-for epoch in range(10):
-    model.train()
-    for img , label in tqdm(train_loader) : 
-        img = img[0]
-        img = img.to(device)
-        label = label.to(device)
-        pred = model(img, features=False)
-        loss = torch.nn.functional.cross_entropy(pred, label)
-        loss.backward()
-        opt.first_step(zero_grad=True)
-        pred = model(img, features=False)
-        loss = torch.nn.functional.cross_entropy(pred, label)
-        loss.backward()
-        opt.second_step(zero_grad=True)
-    model.eval()
-    acc = 0
-    with torch.no_grad() : 
-        for img, label in tqdm(valid_loader) : 
-            img = img.to(device)
-            label = label.to(device)
-            pred = model(img, features=False)
-            loss = torch.nn.functional.cross_entropy(pred, label)
-            bs = label.shape[0]
-            pred = torch.argmax(pred, dim=1)
-            acc += (pred == label).float().mean().item() * bs 
-        acc = acc/len(valid_loader.dataset)
-
-    print(f'epoch {epoch} acc {acc}')
-    model.train()
+df = pd.read_csv('score_board_200.csv')
+source_root = '/Users/seominjae/data/RAF-DB_aligned/valid'
+target_root = '/Users/seominjae/data/RAF-DB_aligned/valid_balanced'
+for i in range(7):
+    temp = df[df['label'] == i]
+    temp_target_root = os.path.join(target_root,str(i+1))
+    os.makedirs(temp_target_root, exist_ok=True)
+    for row in temp.iterrows():
+        file_name = row[1]['ImageName']
+        file_name = file_name.replace('test', 'valid')
+        source_file = os.path.join(source_root,str(i+1),file_name)
+        target_file = os.path.join(temp_target_root,file_name)
+        shutil.copy(source_file,target_file)
