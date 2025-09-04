@@ -43,6 +43,7 @@ class DifferentiableFaceAligner(BaseAligner):
         model.eval()
         return model
 
+    @torch.no_grad()
     def forward(self, x, padding_ratio_override=None):
 
         # input size check

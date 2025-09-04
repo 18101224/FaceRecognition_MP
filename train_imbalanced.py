@@ -158,7 +158,7 @@ def get_args():
     args.add_argument('--hard_weight', type=float, default=1)
     args.add_argument('--soft_weight', type=float, default=1)
     # Model checkpoint
-    args.add_argument('--model_type', type=str, choices=['resnet32_64d','resnet32_128d','resnet50','resnext50','ir50','e2_resnet32','e2_resnext50'], default='resnet32_64d')
+    args.add_argument('--model_type', type=str, choices=['resnet32_64d','resnet32_128d','resnet50','resnext50','ir50','e2_resnet32','e2_resnext50','kp_rpe'], default='resnet32_64d')
     args.add_argument('--feature_branch', default=False)
     args.add_argument('--use_sampler',default=False)
     #dataset information 

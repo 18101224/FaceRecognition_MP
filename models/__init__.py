@@ -11,7 +11,7 @@ from utils import *
 import torchvision.models as tv_models
 from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
-
+from .kp_rpe import get_kprpe_pretrained
 
 __all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone',]
 
@@ -150,7 +150,8 @@ class ImbalancedModel(nn.Module):
         'resnext50': partial(resnext50_backbone, pretrained=False),
         'ir50': partial(ir50_backbone, checkpoint_path='checkpoint/ir50.pth'),
         'e2_resnet32': e2_resnet32,
-        'e2_resnext50': e2_resnext50
+        'e2_resnext50': e2_resnext50,
+        'kp_rpe': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m')
     }
     dim_dict = {
         'resnet32_64d': (64, 512, 128),
@@ -159,9 +160,10 @@ class ImbalancedModel(nn.Module):
         'resnext50': (2048, 2048, 1024),
         'ir50': (256, 512, 128),
         'e2_resnet32': (256, 256, 128),
-        'e2_resnext50': (2048, 2048, 1024)
+        'e2_resnext50': (2048, 2048, 1024),
+        'kp_rpe': (512, 1024, 256)
     }
-    def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False, regular_simplex=False):
+    def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False, regular_simplex=False, cos=True):
         if model_type not in self.model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
         super().__init__()
@@ -182,34 +184,39 @@ class ImbalancedModel(nn.Module):
             self.feature_module = get_feature_module(feature_module, dim_in, int(depth), regular_simplex, num_classes)
         
         regular_simplex = num_classes - 1 if regular_simplex else dim_in
+        self.cos = cos 
         self.weight = torch.randn((regular_simplex,num_classes)).uniform_(-1,1).renorm(2,1,1e-5).mul_(1e5)
         self.weight = nn.Parameter(self.weight, requires_grad=True) # weight is dim, num_classes
 
-        if model_type == 'ir50':
-            targets = []
-            if self.feature_branch:
-                targets.extend([self.head, self.head_fc])
-            if self.feature_module:
-                targets.append(self.feature_module)
-            for t in targets:
-                if t is not None:
-                    for m in t.modules():
-                        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                            nn.init.kaiming_normal_(m.weight)
-        else:
-            for m in self.modules():
-                if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                    nn.init.kaiming_normal_(m.weight)
+
+        targets = []
+        if self.feature_branch:
+            targets.extend([self.head, self.head_fc])
+        if self.feature_module:
+            targets.append(self.feature_module)
+        if model_type not in ['kp_rpe', 'ir50']:
+            targets.append(self.backbone)
+        for t in targets:
+            if t is not None:
+                for m in t.modules():
+                    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                        nn.init.kaiming_normal_(m.weight)
+
+        
 
 
     def get_kernel(self):
-        return torch.nn.functional.normalize(self.weight, dim=0, p=2) # dim, num_classes
+        if self.cos : 
+            return torch.nn.functional.normalize(self.weight, dim=0, p=2) # dim, num_classes
+        else:
+            return self.weight
         
-    def forward(self, x, features=False):
+    def forward(self, x, features=False, keypoint=None ):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
-        z = nn.functional.normalize(self.backbone(x), dim=-1)
+        z = self.backbone(x, keypoint) if keypoint is not None else self.backbone(x)
+        z = nn.functional.normalize(z, dim=-1) if self.cos else z
         z_ = nn.functional.normalize(self.feature_module(z), dim=-1) if self.feature_module is not False else z 
         
         weight = self.get_kernel() # dim, num_classes
