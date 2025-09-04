@@ -17,12 +17,12 @@ source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
 conda activate /pscratch/sd/s/sgkim/hcir/cv 
 
 
-export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
-export MKL_NUM_THREADS=${OMP_NUM_THREADS}
-export OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS}
+# export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
+# export MKL_NUM_THREADS=${OMP_NUM_THREADS}
+# export OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS}
 
-NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
-NODE1=$(echo "$NODELIST" | sed -n '1p')
+# NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
+# NODE1=$(echo "$NODELIST" | sed -n '1p')
 
 
 make_cmd () {
@@ -39,6 +39,6 @@ make_cmd () {
 
 
 CUDA_VISIBLE_DEVICES=0 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=1" 
-CUDA_VISIBLE_DEVICES=1 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=4" 
-CUDA_VISIBLE_DEVICES=2 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=16" 
-CUDA_VISIBLE_DEVICES=3 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=32" 
+# CUDA_VISIBLE_DEVICES=1 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=4" 
+# CUDA_VISIBLE_DEVICES=2 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=16" 
+# CUDA_VISIBLE_DEVICES=3 make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=32" 
