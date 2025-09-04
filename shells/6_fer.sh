@@ -10,4 +10,4 @@ make_cmd () {
          --cosine_scaling=32  --temperature=0.1 --scheduler=warmup  $EXTRA
 }
 
-make_cmd "--learning_rate=${3e-5} --loss=BCL --cl_weight=1 --ce_weight=1" 
+make_cmd "--learning_rate=3e-5 --loss=BCL --cl_weight=1 --ce_weight=1" 
