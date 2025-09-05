@@ -33,7 +33,7 @@ class Analysis:
         self.model = get_model(self.args)
         self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
         self.aligner = load_aligner(self.args.aligner_path) if self.args.aligner_path else None
-        self.backbone_analysis = Analyze_backbone(self.args)
+        # self.backbone_analysis = Analyze_backbone(self.args)
         self.backbone = self.model.backbone 
         self.weight = self.model.weight.T.detach().cpu().numpy()
 
