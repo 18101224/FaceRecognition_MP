@@ -10,8 +10,10 @@ make_cmd () {
          --cosine_scaling=4 --temperature=0.1 --cl_weight=1 --ce_weight=1 $EXTRA
 }
 
-#without cos 
+#with cos 
+for lr in 2e-5 9e-6 ; do
 for weight in 0.3 0.7 ; do
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=9e-6 --dataset_name=RAF-DB --loss=BCL --model_type=ir50 --cl_weight=0.35 --ce_weight=1' 
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=$lr --dataset_name=RAF-DB --loss=BCL --model_type=ir50 --cl_weight=$weight --ce_weight=1' 
+done
 done
 wait
