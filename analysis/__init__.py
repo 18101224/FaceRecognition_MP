@@ -16,36 +16,18 @@ class Analysis:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         #load dataset 
-        train_valid_sets = load_dataset(args.dataset_path, dataset_name=args.dataset_name, imb_factor=args.imb_factor)
-        self.train_set = train_valid_sets[0]
-        self.valid_set = train_valid_sets[1]
-        self.train_loader, self.valid_loader = load_loaders(self.train_set, self.valid_set)
+        self.data_sets = load_dataset(args.dataset_path, dataset_name=args.dataset_name, imb_factor=args.imb_factor)
+        self.loaders = load_loaders(self.data_sets)
         self.save_path = args.save_path
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path,exist_ok=True)
         if self.args.mode == 'dataset':
             return 
         #load model
-        model_ckpt = os.path.join(args.model_paths[0], 'best_acc.pth')
+        model_ckpt = os.path.join(args.model_paths[0], f'{args.ckpt_type}.pth')
         log_ckpt = torch.load(os.path.join(args.model_paths[0], 'latest.pth'), weights_only=False)
-        if log_ckpt.get('feature_module', None) is not None :
-            vars(args)['feature_module'] = log_ckpt['feature_module']
-            if log_ckpt.get('feature_branch', None) is None :
-                vars(args)['feature_branch'] = False
-            else:
-                vars(args)['feature_branch'] = True
-            self.model = get_model(args)
-            self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
-        else:
-            for i in [1,2,3,4,5,6] :
-                try :
-                    vars(args)['feature_module'] = f'deepcomplex_{i}'
-                    self.model = get_model(args)
-                    self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
-                    break 
-                except :
-                    continue
-
+        self.model = get_model(args)
+        self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
         self.aligner = load_aligner(args.aligner_path) if args.aligner_path else None
         self.backbone_analysis = Analyze_backbone(args)
         self.backbone = self.model.backbone 
@@ -55,21 +37,28 @@ class Analysis:
         plot_label_distribution(self.train_set.labels, self.valid_set.labels, self.save_path, model_name=getattr(self.args, 'model_name', None))
 
     def analyze_model_performance(self):
-        train_preds, train_labels, train_confs = get_predictions(self.model, self.train_loader, self.aligner)
-        valid_preds, valid_labels, valid_confs = get_predictions(self.model, self.valid_loader, self.aligner)
-
+        train_preds, train_labels, train_confs = get_predictions(self.model, self.loaders[0], self.aligner)
+        valid_preds, valid_labels, valid_confs = get_predictions(self.model, self.loaders[1], self.aligner)
+        valid_preds_balanced, valid_labels_balanced, valid_confs_balanced = get_predictions(self.model, self.loaders[2], self.aligner) if len(self.loaders) == 3 else (None, None, None)
         #compute confusion matrix
         valid_cm = compute_confusion_matrix(valid_preds, valid_labels)
         valid_normed_cm = normalize_confusion_matrix(valid_cm, valid_labels)
 
+        valid_cm_balanced = compute_confusion_matrix(valid_preds_balanced, valid_labels_balanced) if valid_preds_balanced is not None else None
+        valid_normed_cm_balanced = normalize_confusion_matrix(valid_cm_balanced, valid_labels_balanced) if valid_cm_balanced is not None else None
+
         #plot confusion matrix
         plot_confusion_matrix(valid_cm, valid_normed_cm, self.save_path, model_name=getattr(self.args, 'model_name', None))
+        plot_confusion_matrix(valid_cm_balanced, valid_normed_cm_balanced, self.save_path, model_name=getattr(self.args, 'model_name', None),save_name='valid_confusion_matrix_balanced.png') if valid_cm_balanced is not None else None
 
         #compute angle matrix
         angle_matrix = compute_angle_matrix(self.model)
         plot_angle_with_confusion_matrix(angle=angle_matrix, conf=valid_normed_cm, save_path=self.save_path)
+        plot_angle_with_confusion_matrix(angle=angle_matrix, conf=valid_normed_cm_balanced, save_path=self.save_path, save_name='valid_confusion_matrix_balanced.png') if valid_cm_balanced is not None else None
         error_rates = compute_error_rate_per_class(preds =valid_preds, labels = valid_labels)
+        error_rates_balanced = compute_error_rate_per_class(preds =valid_preds_balanced, labels = valid_labels_balanced) if valid_preds_balanced is not None else None
         plot_class_num_and_error(train_labels, error_rates, self.save_path, model_name=getattr(self.args, 'model_name', None))
+        plot_class_num_and_error(train_labels, error_rates_balanced, self.save_path, model_name=getattr(self.args, 'model_name', None), save_name='valid_confusion_matrix_balanced.png') if valid_cm_balanced is not None else None
 
         # Calculate validation accuracy
         correct_predictions = (valid_preds == valid_labels).sum()
@@ -120,8 +109,8 @@ class Analysis:
         if self.args.mode == 'dataset':
             return 
         self.analyze_model_performance()
-        self.analyze_features()
-        self.backbone_analysis.main()
+        #self.analyze_features()
+        #self.backbone_analysis.main()
 
 
 class Compare:

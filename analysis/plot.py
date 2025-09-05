@@ -33,7 +33,7 @@ def plot_label_distribution(train_labels, valid_labels, save_path, model_name=No
     plt.savefig(os.path.join(save_path, 'label_distribution.png'))
     plt.close()
 
-def plot_confusion_matrix(cm: np.ndarray, normed_cm: np.ndarray, save_path: str, model_name=None):
+def plot_confusion_matrix(cm: np.ndarray, normed_cm: np.ndarray, save_path: str, model_name=None, save_name=None):
     """
     Plot a confusion matrix and its normalized version side by side as heatmaps.
     Args:
@@ -57,7 +57,10 @@ def plot_confusion_matrix(cm: np.ndarray, normed_cm: np.ndarray, save_path: str,
         if model_name is not None:
             fig.suptitle(f'Model: {model_name}', fontsize=16)
         plt.tight_layout(rect=[0, 0, 1, 0.96] if model_name is not None else None)
-        plt.savefig(os.path.join(save_path, 'confusion_matrices.png'))
+        if save_name is not None:
+            plt.savefig(os.path.join(save_path, save_name))
+        else:
+            plt.savefig(os.path.join(save_path, 'confusion_matrices.png'))
         plt.close() 
     else:
         # If the number of classes is large, plot heatmaps without annotation values for clarity
@@ -75,7 +78,10 @@ def plot_confusion_matrix(cm: np.ndarray, normed_cm: np.ndarray, save_path: str,
         if model_name is not None:
             fig.suptitle(f'Model: {model_name}', fontsize=16)
         plt.tight_layout(rect=[0, 0, 1, 0.96] if model_name is not None else None)
-        plt.savefig(os.path.join(save_path, 'confusion_matrices.png'))
+        if save_name is not None:
+            plt.savefig(os.path.join(save_path, save_name))
+        else:
+            plt.savefig(os.path.join(save_path, 'confusion_matrices.png'))
         plt.close() 
 
 def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_path: str):
