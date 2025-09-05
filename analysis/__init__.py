@@ -57,8 +57,8 @@ class Analysis:
         plot_angle_with_confusion_matrix(angle=angle_matrix, conf=valid_normed_cm_balanced, save_path=self.save_path, save_name='valid_confusion_matrix_balanced.png') if valid_cm_balanced is not None else None
         error_rates = compute_error_rate_per_class(preds =valid_preds, labels = valid_labels)
         error_rates_balanced = compute_error_rate_per_class(preds =valid_preds_balanced, labels = valid_labels_balanced) if valid_preds_balanced is not None else None
-        plot_class_num_and_error(train_labels, error_rates, self.save_path, model_name=getattr(self.args, 'model_name', None))
-        plot_class_num_and_error(train_labels, error_rates_balanced, self.save_path, model_name=getattr(self.args, 'model_name', None), save_name='valid_confusion_matrix_balanced.png') if valid_cm_balanced is not None else None
+        plot_class_num_and_accuracy(train_labels, error_rates, self.save_path, model_name=getattr(self.args, 'model_name', None))
+        plot_class_num_and_accuracy(train_labels, error_rates_balanced, self.save_path, model_name=getattr(self.args, 'model_name', None), save_name='valid_confusion_matrix_balanced.png') if valid_cm_balanced is not None else None
 
         # Calculate validation accuracy
         correct_predictions = (valid_preds == valid_labels).sum()

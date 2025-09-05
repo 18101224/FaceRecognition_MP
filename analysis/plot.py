@@ -178,6 +178,43 @@ def plot_class_num_and_error(training_labels: list, error_rate: list, save_path:
     plt.close()
 
 
+def plot_class_num_and_accuracy(training_labels: list, error_rate: list, save_path: str, model_name=None, save_name=None):
+    """
+    Plot a curve where x-axis is the number of samples per class and y-axis is the accuracy per class.
+    Converts error rates to accuracy by subtracting from 1.
+    Args:
+        training_labels (list): List of class labels for the training set.
+        error_rate (list): List of error rates per class (should match number of classes).
+        save_path (str): Path to save the plot image.
+        model_name (str, optional): Name of the model to annotate the figure.
+    """
+    counter = Counter(training_labels)
+    num_samples = [0] * len(counter)
+    for key, value in counter.items():
+        num_samples[int(key)] = value
+    # Convert error rates to accuracy
+    accuracy = 1.0 - np.array(error_rate)
+    vectors = np.hstack((np.array(num_samples).reshape(-1, 1), accuracy.reshape(-1, 1)))
+    # Sort by number of samples (feature 0)
+    vectors = vectors[vectors[:, 0].argsort()]
+    # Plot
+    plt.figure(figsize=(8, 5))
+    plt.plot(vectors[:, 0], vectors[:, 1], marker='o')
+    plt.xlabel('Number of Samples per Class')
+    plt.ylabel('Accuracy per Class')
+    plt.title('Class Sample Count vs. Accuracy')
+    plt.ylim(0.0, 1.0)  # Set y-axis range
+    plt.grid(True)
+    if model_name is not None:
+        plt.suptitle(f'Model: {model_name}', fontsize=14, y=1.02)
+    plt.tight_layout(rect=[0, 0, 1, 0.96] if model_name is not None else None)
+    if save_name is not None:
+        plt.savefig(os.path.join(save_path, save_name))
+    else:
+        plt.savefig(os.path.join(save_path, 'class_num_vs_accuracy.png'))
+    plt.close()
+
+
 def plot_error_rate_comparison(error_rates_list, model_names, train_labels, save_path: str):
     """
     Plot class-wise error rates for multiple models as grouped bars, and normalized sample counts as a line.
