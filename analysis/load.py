@@ -1,25 +1,15 @@
 import sys
 sys.path.append('..')
-from models import ImbalancedModel
+from dataset.fer import FER
+from dataset.transform import get_transform
+from models import  get_model 
 from dataset import get_cifar_dataset, get_transform, Large_dataset
 import torch
 from torch.utils.data import DataLoader 
 from aligners import get_aligner
 import argparse
 
-def get_model(args):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    dataset_name = args.dataset_name
-    model_type = args.model_type
-    if 'cifar' in dataset_name :
-        n_c = 100 if '100' in dataset_name else 10
-        model = ImbalancedModel(num_classes=n_c, model_type=model_type,feature_module=args.feature_module, feature_branch=args.feature_branch)
-        model = model.to(device)
-        model.eval()
-        return model
-    else:
-        raise ValueError(f"Dataset {dataset_name} not supported")
-    
+
 def load_model(model, ckpt_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.load_state_dict(torch.load(ckpt_path,map_location=device))
@@ -38,12 +28,22 @@ def load_dataset(dataset_path, dataset_name, imb_factor=None):
         elif 'imagenet_lt' in dataset_name:
             dataset = Large_dataset(root=dataset_path, mode=train, transform=None)
             result.append(dataset)
+        elif 'RAF-DB' in dataset_name:
+            dataset = FER(args, get_transform(args,train=(train=='train')))
+            result.append(dataset)
+            if not train == 'train':
+                result.append(FER(args, get_transform(args,train=False),balanced=True))
+        elif 'AffectNet' in dataset_name:
+            raise ValueError(f'Dataset {dataset_name} not supported')
+                
     return result
     
-def load_loaders(train_set, vaild_set):
-    train_loader = DataLoader(train_set, batch_size=128, shuffle=False, num_workers=16, pin_memory=True, generator=torch.Generator().manual_seed(42))
-    valid_loader = DataLoader(vaild_set, batch_size=128, shuffle=False, num_workers=16, pin_memory=True, generator=torch.Generator().manual_seed(42))
-    return train_loader, valid_loader
+def load_loaders(datasets):
+    result = []
+    for dataset in datasets:
+        loader = DataLoader(dataset, batch_size=128, shuffle=False, num_workers=16, pin_memory=True, generator=torch.Generator().manual_seed(42))
+        result.append(loader)
+    return result
 
 def load_aligner(config_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

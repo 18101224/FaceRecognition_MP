@@ -6,7 +6,7 @@ from tqdm import tqdm
 import wandb
 import os
 from argparse import ArgumentParser
-from models import ImbalancedModel
+from models import get_model
 from collections import Counter
 from torch.optim import SGD
 from Loss.Imbalanced import get_angle_loss, BCLLoss, weight_scheduling, ECELoss
@@ -89,22 +89,6 @@ def get_dataset(args, train:bool, balanced=False):
     return result 
 
     
-def get_model(args):
-    if 'cifar' in args.dataset_name:
-        n_c = 100 if '100' in args.dataset_name else 10
-        model = ImbalancedModel(cos=args.cos, num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
-        return model
-    elif 'imagenet_lt' == args.dataset_name:
-        model = ImbalancedModel(cos=args.cos, num_classes=1000, model_type=args.model_type)
-        return model
-    elif 'inat' == args.dataset_name:
-        model = ImbalancedModel(cos=args.cos, num_classes=8142, model_type=args.model_type)
-        return model
-    elif 'RAF-DB' == args.dataset_name or 'AffectNet' == args.dataset_name:
-        model = ImbalancedModel(cos=args.cos, num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
-        return model
-    else:
-        raise ValueError(f'Dataset {args.dataset_name} not supported')
 
 
 def get_args():
@@ -340,6 +324,7 @@ class Trainer:
         if include(self.args.loss, ['ECE']) :
             self.ece = ECELoss(args=self.args, k=self.args.k, hard_weight=self.args.hard_weight, soft_weight=self.args.soft_weight, num_classes=np.max(self.train_dataset.labels)+1, surrogate=self.args.surrogate, 
             std_weight=getattr(args, 'std_weight', 1.0), mean_weight=getattr(args, 'mean_weight', 1.0))
+        
         #############################################
         #### 📊 METRICS & LOGGING INITIALIZATION ####
         #############################################

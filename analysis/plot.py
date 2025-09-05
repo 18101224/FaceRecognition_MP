@@ -84,7 +84,7 @@ def plot_confusion_matrix(cm: np.ndarray, normed_cm: np.ndarray, save_path: str,
             plt.savefig(os.path.join(save_path, 'confusion_matrices.png'))
         plt.close() 
 
-def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_path: str):
+def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_path: str, save_name=None):
     """
     Plot heatmaps for angle matrix and confusion matrix side by side.
     - Angle heatmap: base value is mean of upper triangle (excluding diagonal), use diverging colormap, mask diagonal.
@@ -137,11 +137,14 @@ def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_p
                  verticalalignment='top', horizontalalignment='left',
                  bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5', alpha=0.9))
     plt.tight_layout(rect=[0, 0.05, 1, 1])
-    plt.savefig(os.path.join(save_path, 'angle_confusion_heatmaps.png'))
+    if save_name is not None:
+        plt.savefig(os.path.join(save_path, save_name))
+    else:
+        plt.savefig(os.path.join(save_path, 'angle_confusion_heatmaps.png'))
     plt.close()
 
 
-def plot_class_num_and_error(training_labels: list, error_rate: list, save_path: str, model_name=None):
+def plot_class_num_and_error(training_labels: list, error_rate: list, save_path: str, model_name=None, save_name=None):
     """
     Plot a curve where x-axis is the number of samples per class and y-axis is the error rate per class.
     Args:
@@ -168,7 +171,10 @@ def plot_class_num_and_error(training_labels: list, error_rate: list, save_path:
     if model_name is not None:
         plt.suptitle(f'Model: {model_name}', fontsize=14, y=1.02)
     plt.tight_layout(rect=[0, 0, 1, 0.96] if model_name is not None else None)
-    plt.savefig(os.path.join(save_path, 'class_num_vs_error.png'))
+    if save_name is not None:
+        plt.savefig(os.path.join(save_path, save_name))
+    else:
+        plt.savefig(os.path.join(save_path, 'class_num_vs_error.png'))
     plt.close()
 
 

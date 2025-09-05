@@ -52,8 +52,8 @@ def get_transform(args, train):
             dataset_name='imagenet_lt'
         return validation_transforms[dataset_name]
 
-    
-    if include(args.loss, ['CE', 'LDAM', 'BS', 'DRW', 'RIDE']):
+    loss = getattr(args,'loss','CE')
+    if include(loss, ['CE', 'LDAM', 'BS', 'DRW', 'RIDE']):
         large_size_tr = [
                 transforms.RandomHorizontalFlip(),
                 transforms.ColorJitter(0.4,0.4,0.4,0.1),
@@ -91,7 +91,7 @@ def get_transform(args, train):
             ])
         ]
         }
-    elif include(args.loss, ['NCL']):
+    elif include(loss, ['NCL']):
         tr_dict = {
             'cifar': [
             transforms.Compose([
@@ -130,7 +130,7 @@ def get_transform(args, train):
                 ])
             ]
         }
-    elif include(args.loss, ['BCL']):
+    elif include(loss, ['BCL']):
         large_before = [transforms.RandomHorizontalFlip(),
                   transforms.RandomApply([transforms.ColorJitter(0.4,0.4,0.4,0.0)],p=1.),
                   ImageNetPolicy(),
@@ -197,7 +197,7 @@ def get_transform(args, train):
             ]
         }
     else:
-        raise ValueError(f"Loss {args.loss} not supported")
+        raise ValueError(f"Loss {loss} not supported")
     if not getattr(args, 'aug', False) :
         tr_dict[dataset_name][0].transforms.pop(2)
     if 'imagenet_lt_small' == args.dataset_name : 

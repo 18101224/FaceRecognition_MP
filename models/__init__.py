@@ -13,7 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
 from .kp_rpe import get_kprpe_pretrained
 
-__all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone',]
+__all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone', 'get_model']
 
 if False : 
     from .kp_rpe import *
@@ -292,3 +292,24 @@ def load_g_nets(g_nets, ckpt_path, device):
     for g_net, ckpt in zip(g_nets, ckpts):
         g_net.load_state_dict(torch.load(ckpt, map_location=torch.device(device)))
     return g_nets
+
+
+def get_model(args):
+    '''
+    args should have dataset_name, model_type, cos, feature_module, feature_branch
+    '''
+    if 'cifar' in args.dataset_name:
+        n_c = 100 if '100' in args.dataset_name else 10
+        model = ImbalancedModel(cos=args.cos, num_classes=n_c, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+        return model
+    elif 'imagenet_lt' == args.dataset_name:
+        model = ImbalancedModel(cos=args.cos, num_classes=1000, model_type=args.model_type)
+        return model
+    elif 'inat' == args.dataset_name:
+        model = ImbalancedModel(cos=args.cos, num_classes=8142, model_type=args.model_type)
+        return model
+    elif 'RAF-DB' == args.dataset_name or 'AffectNet' == args.dataset_name:
+        model = ImbalancedModel(cos=args.cos, num_classes=7, model_type=args.model_type, feature_module=args.feature_module, feature_branch=args.feature_branch)
+        return model
+    else:
+        raise ValueError(f'Dataset {args.dataset_name} not supported')
