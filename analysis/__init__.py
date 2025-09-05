@@ -17,7 +17,7 @@ class Analysis:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         #load dataset 
-        self.data_sets = load_dataset(self.args,self.args.dataset_path, dataset_name=self.args.dataset_name, imb_factor=self.args.imb_factor)
+        self.data_sets = load_dataset(self.args,dataset_path=self.args.dataset_path, dataset_name=self.args.dataset_name, imb_factor=self.args.imb_factor)
         self.loaders = load_loaders(self.data_sets)
         self.save_path = self.args.save_path
         if not os.path.exists(self.save_path):
