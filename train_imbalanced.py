@@ -640,7 +640,8 @@ class Trainer:
             test_loss, test_acc, test_macro_acc = self.evaluate(self.test_loader, self.test_dataset)
             if 'RAF' in self.args.dataset_name:
                 test_loss_balanced, test_acc_balanced, _ = self.evaluate(self.test_balanced_loader, self.test_balanced_dataset)
-            
+            else:
+                test_acc_balanced = 0
             # Update learning rate
 
             
@@ -684,7 +685,8 @@ class Trainer:
 
                 print(f'Epoch {epoch}: '
                     f'Train Acc: {train_acc:.4f}, Train Macro Acc: {train_macro_acc:.4f}, '
-                    f'Test Acc: {test_acc:.4f}, Test Macro Acc: {test_macro_acc:.4f}')
+                    f'Test Acc: {test_acc:.4f}, Test Macro Acc: {test_macro_acc:.4f}, Test Acc Balanced: {test_acc_balanced:.4f}, '
+                    f'Best Acc: {self.best_acc:.4f}, Best Macro Acc: {self.best_macro_acc:.4f}, Best Acc Balanced: {self.best_acc_balanced:.4f} ')
                 if self.args.cos : 
                     self.save_angle_mat(epoch)
 
