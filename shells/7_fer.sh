@@ -10,4 +10,4 @@ make_cmd () {
          --cosine_scaling=4    --temperature=0.1 --cl_weight=1 --ce_weight=1 $EXTRA
 }
 
-CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=9e-6--dataset_name=RAF-DB --loss=CE--model_type=ir50' &
+CUDA_VISIBLE_DEVICES=2 make_cmd '--learning_rate=9e-6 --dataset_name=RAF-DB --loss=CE--model_type=ir50' 
