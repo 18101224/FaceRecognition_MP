@@ -27,11 +27,9 @@ class Analysis:
         #load model
         model_ckpt = os.path.join(args.model_paths[0], f'{args.ckpt_type}.pth')
         log_ckpt = torch.load(os.path.join(args.model_paths[0], 'latest.pth'), weights_only=False)
-        self.args = Namespace(**{
-            **log_ckpt['args'],
-            **args,
-        })
-        self.args.cos = log_ckpt['args'].cos
+        log_args = vars(log_ckpt['args']) if isinstance(log_ckpt['args'], Namespace) else log_ckpt['args']
+        cur_args = vars(args) if isinstance(args, Namespace) else args
+        self.args = Namespace(**{**log_args, **cur_args})
         self.model = get_model(args)
         self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
         self.aligner = load_aligner(args.aligner_path) if args.aligner_path else None
