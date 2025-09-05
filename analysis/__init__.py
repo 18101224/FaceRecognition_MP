@@ -17,24 +17,23 @@ class Analysis:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         #load dataset 
-        self.data_sets = load_dataset(args,args.dataset_path, dataset_name=args.dataset_name, imb_factor=args.imb_factor)
+        self.data_sets = load_dataset(self.args,self.args.dataset_path, dataset_name=self.args.dataset_name, imb_factor=self.args.imb_factor)
         self.loaders = load_loaders(self.data_sets)
-        self.save_path = args.save_path
+        self.save_path = self.args.save_path
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path,exist_ok=True)
         if self.args.mode == 'dataset':
             return 
         #load model
-        model_ckpt = os.path.join(args.model_paths[0], f'{args.ckpt_type}.pth')
-        log_ckpt = torch.load(os.path.join(args.model_paths[0], 'latest.pth'), weights_only=False)
+        model_ckpt = os.path.join(self.args.model_paths[0], f'{self.args.ckpt_type}.pth')
+        log_ckpt = torch.load(os.path.join(self.args.model_paths[0], 'latest.pth'), weights_only=False)
         log_args = vars(log_ckpt['args']) if isinstance(log_ckpt['args'], Namespace) else log_ckpt['args']
-        cur_args = vars(args) if isinstance(args, Namespace) else args
+        cur_args = vars(self.args) if isinstance(self.args, Namespace) else self.args
         self.args = Namespace(**{**log_args, **cur_args})
-        print(self.args)
-        self.model = get_model(args)
+        self.model = get_model(self.args)
         self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
-        self.aligner = load_aligner(args.aligner_path) if args.aligner_path else None
-        self.backbone_analysis = Analyze_backbone(args)
+        self.aligner = load_aligner(self.args.aligner_path) if self.args.aligner_path else None
+        self.backbone_analysis = Analyze_backbone(self.args)
         self.backbone = self.model.backbone 
         self.weight = self.model.weight.T.detach().cpu().numpy()
 
