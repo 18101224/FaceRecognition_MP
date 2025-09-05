@@ -3,7 +3,7 @@
 #SBATCH -A m1248_g 
 #SBATCH -q shared
 #SBATCH -N 1
-#SBATCH -t 02:00:00
+#SBATCH -t 04:00:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -33,11 +33,11 @@ make_cmd () {
         --cos=True --momentum=0.9 --world_size=1 \
         --model_type=ir50  --imb_type=exp --imb_factor=0.01 \
         --dataset_path=../data/RAF-DB_balanced --dataset_name=RAF-DB --use_sampler=True --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True  --num_workers=32 \
-           --temperature=0.1 --scheduler=warmup  $EXTRA
+           --temperature=0.1 --scheduler=warmup   $EXTRA
 }
 
 
 
 
-make_cmd "--learning_rate=1e-5 --loss=BCL --cl_weight=1 --cosine_scaling=4"  &
+make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=4"  &
 wait  

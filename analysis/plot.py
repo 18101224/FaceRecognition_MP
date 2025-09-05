@@ -84,7 +84,8 @@ def plot_confusion_matrix(cm: np.ndarray, normed_cm: np.ndarray, save_path: str,
             plt.savefig(os.path.join(save_path, 'confusion_matrices.png'))
         plt.close() 
 
-def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_path: str, save_name=None):
+def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_path: str, save_name=None,
+                                     top_reserved: float = 0.14):
     """
     Plot heatmaps for angle matrix and confusion matrix side by side.
     - Angle heatmap: base value is mean of upper triangle (excluding diagonal), use diverging colormap, mask diagonal.
@@ -96,6 +97,12 @@ def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_p
         conf (np.ndarray): Confusion matrix of shape (n_c, n_c)
         save_path (str): Path to save the plot.
     """
+    # Defaults for angle heatmap colorbar center/range if not provided
+    # Theoretical equi-angular center with margin
+
+    bar_center = np.arccos(-1/(angle.shape[0]-1))*180.0/np.pi
+
+    bar_range = 10 
     n_c = angle.shape[0]
     # Mask diagonal for both matrices
     mask = np.eye(n_c, dtype=bool)
@@ -104,8 +111,9 @@ def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_p
     upper_vals = angle[triu_indices]
     base = upper_vals.mean()
     std = upper_vals.std()
-    # Center angle matrix by base value, mask diagonal
-    angle_centered = angle - base
+    # Prepare angle matrix for plotting (mask diagonal); we keep absolute values
+    # and control the color scale using bar_center/bar_range
+    angle_plot = angle.copy()
     # For confusion: mask diagonal (set to np.nan)
     conf_masked = conf.copy().astype(float)
     np.fill_diagonal(conf_masked, np.nan)
@@ -121,9 +129,19 @@ def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_p
         fmt_angle = '.2f'
         fmt_conf = '.2f'
     fig, axes = plt.subplots(1, 2, figsize=(16, 7))
-    # Angle heatmap
-    sns.heatmap(angle_centered, mask=mask, annot=annot_angle, fmt=fmt_angle, cmap='coolwarm', center=0, ax=axes[0])
-    axes[0].set_title('Angle Matrix (centered, off-diagonal)')
+    # Angle heatmap (absolute values with controlled color scale)
+    sns.heatmap(
+        angle_plot,
+        mask=mask,
+        annot=annot_angle,
+        fmt=fmt_angle,
+        cmap='coolwarm',
+        center=bar_center,
+        vmin=bar_center - bar_range,
+        vmax=bar_center + bar_range,
+        ax=axes[0]
+    )
+    axes[0].set_title('Angle Matrix (off-diagonal)')
     axes[0].set_xlabel('Class')
     axes[0].set_ylabel('Class')
     # Confusion matrix heatmap
@@ -131,12 +149,13 @@ def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_p
     axes[1].set_title('Confusion Matrix (off-diagonal)')
     axes[1].set_xlabel('Predicted Class')
     axes[1].set_ylabel('True Class')
-    # Add mean and std text in the upper left of the angle matrix plot
+    # Build stats textbox and place it in reserved top area to avoid covering heatmap
     textstr = f"Angle mean: {base:.2f}\nAngle std: {std:.2f}"
-    axes[0].text(0.02, 0.98, textstr, transform=axes[0].transAxes, fontsize=13,
-                 verticalalignment='top', horizontalalignment='left',
-                 bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5', alpha=0.9))
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    # Reserve top space for the textbox
+    plt.tight_layout(rect=[0, 0.0, 1, 1 - top_reserved])
+    fig.text(0.015, 1 - (top_reserved / 2), textstr, fontsize=13,
+             va='center', ha='left',
+             bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5', alpha=0.9))
     if save_name is not None:
         plt.savefig(os.path.join(save_path, save_name))
     else:
