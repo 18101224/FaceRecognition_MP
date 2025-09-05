@@ -17,7 +17,7 @@ def load_model(model, ckpt_path):
     model.to(device)
     return model
 
-def load_dataset(dataset_path, dataset_name, imb_factor=None):
+def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
     result = []
     for train in ['train', 'test']:
         if 'cifar' in dataset_name : 
