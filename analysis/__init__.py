@@ -13,6 +13,7 @@ feature_names = ['backbone_feat', 'cls_feat', 'bcl_feat', 'center_feat']
 class Analysis:
     def __init__(self,args):
         self.args = args
+        
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         #load dataset 
@@ -26,6 +27,7 @@ class Analysis:
         #load model
         model_ckpt = os.path.join(args.model_paths[0], f'{args.ckpt_type}.pth')
         log_ckpt = torch.load(os.path.join(args.model_paths[0], 'latest.pth'), weights_only=False)
+        self.args.cos = log_ckpt['args'].cos
         self.model = get_model(args)
         self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
         self.aligner = load_aligner(args.aligner_path) if args.aligner_path else None
