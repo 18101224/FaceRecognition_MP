@@ -29,10 +29,10 @@ def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
             dataset = Large_dataset(root=dataset_path, mode=train, transform=None)
             result.append(dataset)
         elif 'RAF-DB' in dataset_name:
-            dataset = FER(args, get_transform(args,train=(train=='train')),idx=False)
+            dataset = FER(args,train=(train=='train'), transform=get_transform(args,train=False),idx=False)
             result.append(dataset)
             if not train == 'train':
-                result.append(FER(args, get_transform(args,train=False),balanced=True,idx=False))
+                result.append(FER(args, train=(train=='train'), transform=get_transform(args,train=False),balanced=True,idx=False))
         elif 'AffectNet' in dataset_name:
             raise ValueError(f'Dataset {dataset_name} not supported')
                 
