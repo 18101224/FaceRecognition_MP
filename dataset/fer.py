@@ -27,7 +27,7 @@ class FER(Dataset):
         super().__init__()
         self.root = args.dataset_path
         self.train = train
-        post = 'train' if train else ('test' if 'Affect' in self.root else ('valid' if ))
+        post = 'train' if train else ('test' if 'Affect' in self.root else ('valid_balanced' if balanced else 'valid' ))
         offset = 1 if 'RAF' in self.root else 0 
         self.transform=transform
         self.paths = []
