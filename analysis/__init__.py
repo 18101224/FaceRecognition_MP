@@ -38,7 +38,7 @@ class Analysis:
         self.weight = self.model.weight.T.detach().cpu().numpy()
 
     def analyze_dataset(self):
-        plot_label_distribution(self.train_set.labels, self.valid_set.labels, self.save_path, model_name=getattr(self.args, 'model_name', None))
+        plot_label_distribution(self.datasets[0].labels, self.datasets[1].labels, self.save_path, model_name=getattr(self.args, 'model_name', None))
 
     def analyze_model_performance(self):
         train_preds, train_labels, train_confs = get_predictions(self.model, self.loaders[0], self.aligner)
