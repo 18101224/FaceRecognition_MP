@@ -6,7 +6,7 @@ from copy import deepcopy
 import sys; sys.path.append('..')
 from models import  CosClassifier
 from models.modules import resnet32_backbone as resnet32
-
+from argparse import Namespace
 
 feature_names = ['backbone_feat', 'cls_feat', 'bcl_feat', 'center_feat']
 
@@ -27,6 +27,10 @@ class Analysis:
         #load model
         model_ckpt = os.path.join(args.model_paths[0], f'{args.ckpt_type}.pth')
         log_ckpt = torch.load(os.path.join(args.model_paths[0], 'latest.pth'), weights_only=False)
+        self.args = Namespace(**{
+            **log_ckpt['args'],
+            **args,
+        })
         self.args.cos = log_ckpt['args'].cos
         self.model = get_model(args)
         self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
