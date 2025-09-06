@@ -35,7 +35,7 @@ def load_models(model_paths, args):
     for model_path, arg in zip(model_paths, args) : 
         ckpt_path = os.path.join(model_path, f'{arg.ckpt_type}.pth')
         model = get_model(arg)
-        model.load_state_dict(torch.load(ckpt_path,map_location=torch.device('cuda'))['model_state_dict'])
+        model.load_state_dict(torch.load(ckpt_path,map_location=torch.device('cuda'),weights_only=False)['model_state_dict'])
         model = model.to(torch.device('cuda'))
         model.eval()
         results.append(model)
