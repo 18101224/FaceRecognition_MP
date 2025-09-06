@@ -313,27 +313,33 @@ def plot_accuracy_comparison(accuracy_list, model_names, train_labels, save_path
     train_labels = np.array(train_labels)
     num_models = len(accuracy_list)
     num_classes = len(accuracy_list[0])
-    class_labels = [f'class {i}' for i in range(num_classes)]
 
     # Compute sample counts per class
     counter = Counter(train_labels)
     sample_counts = np.array([counter.get(i, 0) for i in range(num_classes)])
-    # Normalize sample counts (0~1)
-    sample_counts_ratio = sample_counts / sample_counts.max() if sample_counts.max() > 0 else sample_counts
 
-    fig, ax1 = plt.subplots(figsize=(10, 5))
+    # Sort classes by sample count in descending order
+    sorted_indices = np.argsort(sample_counts)[::-1]  # Sort in descending order
+    sorted_sample_counts = sample_counts[sorted_indices]
+    sorted_accuracies = [acc[sorted_indices] for acc in accuracy_list]
+    sorted_class_labels = [f'class {i} ({sample_counts[i]})' for i in sorted_indices]
+
+    # Normalize sample counts (0~1)
+    sample_counts_ratio = sorted_sample_counts / sorted_sample_counts.max() if sorted_sample_counts.max() > 0 else sorted_sample_counts
+
+    fig, ax1 = plt.subplots(figsize=(12, 6))
     x = np.arange(num_classes)
     total_bar_width = 0.7
     bar_width = total_bar_width / num_models
 
     # Plot accuracy bars for each model
-    for idx, (acc, model_name) in enumerate(zip(accuracy_list, model_names)):
+    for idx, (acc, model_name) in enumerate(zip(sorted_accuracies, model_names)):
         offset = -total_bar_width/2 + idx * bar_width + bar_width/2
         ax1.bar(x + offset, acc, width=bar_width, label=model_name, alpha=0.7)
-    ax1.set_xlabel('Class')
+    ax1.set_xlabel('Class (sorted by sample count descending)')
     ax1.set_ylabel('Accuracy')
     ax1.set_xticks(x)
-    ax1.set_xticklabels(class_labels, rotation=45, ha='right')
+    ax1.set_xticklabels(sorted_class_labels, rotation=45, ha='right')
     ax1.set_ylim(0, 1)
     ax1.legend(loc='upper left')
 
@@ -344,10 +350,10 @@ def plot_accuracy_comparison(accuracy_list, model_names, train_labels, save_path
     ax2.set_ylim(0, 1.1)
     ax2.legend(loc='upper right')
 
-    plt.title('Class-wise Accuracy Comparison with Normalized Training Sample Counts')
+    plt.title('Class-wise Accuracy Comparison with Normalized Training Sample Counts\n(Sorted by Sample Count Descending)')
     fig.tight_layout()
     # Add extra space for x labels and title
-    plt.subplots_adjust(bottom=0.18, top=0.88)
+    plt.subplots_adjust(bottom=0.25, top=0.85)
     plt.savefig(os.path.join(save_path, 'accuracy_comparison.png' if save_name is None else save_name))
     plt.close()
 
@@ -369,8 +375,7 @@ def compare_angle_rates(angle_matrices, model_names, save_path: str):
     means = [vals.mean() for vals in uppers]
     stds = [vals.std() for vals in uppers]
     # Choose base mean from matrix with lowest std
-    min_std_idx = np.argmin(stds)
-    base = means[min_std_idx]
+    base = np.arccos(-1/(n_c-1))*180.0/np.pi
     # Center all matrices by the chosen base
     centered_matrices = [mat - base for mat in angle_matrices]
     # Plot
