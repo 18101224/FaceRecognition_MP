@@ -116,7 +116,7 @@ class Analysis:
 class Compare:
     def __init__(self, args):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.datasets = load_dataset(args.dataset_path, dataset_name=args.dataset_name, imb_factor=args.imb_factor)
+        self.datasets = load_dataset(args,args.dataset_path, dataset_name=args.dataset_name, imb_factor=args.imb_factor)
         self.loaders = load_loaders(self.datasets)
         self.logs = load_logs(args.model_paths)
         self.args = concat_args(args, self.logs)
