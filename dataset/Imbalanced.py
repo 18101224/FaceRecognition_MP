@@ -115,7 +115,6 @@ class Large_dataset(Dataset):
         self.dataset_name='inat' if 'inat' in root else 'imagenet_lt'
         if 'imagenet_lt' in self.dataset_name:
             txt = 'ImageNet_LT_train.txt' if train else 'ImageNet_LT_test.txt' 
-
             with open(os.path.join(root, txt)) as f:
                 for line in f:
                     img_path, label = line.split()
