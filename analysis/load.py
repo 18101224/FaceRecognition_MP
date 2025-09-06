@@ -15,7 +15,7 @@ def load_logs(ckpt_paths):
     results = []
     for ckpt_path in ckpt_paths:
         results.append(
-            torch.load(os.path.joint(ckpt_path,'latest.pth'),weights_only=False)
+            torch.load(os.path.join(ckpt_path,'latest.pth'),weights_only=False)
         )
     return results
 
