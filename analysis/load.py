@@ -26,7 +26,7 @@ def concat_args(args, logs):
         temp_log_args = vars(log['args']) if isinstance(log['args'],argparse.Namespace) else log['args']
         print(type(results))
         results.append(argparse.Namespace(**{**temp_args, **temp_log_args}))
-        print(results[-1]['model_type'])
+        print(results[-1].model_type)
     return results
 
 def load_models(model_paths, args):
