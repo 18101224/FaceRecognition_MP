@@ -118,7 +118,7 @@ class Compare:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.logs = load_logs(args.model_paths)
         self.args = concat_args(args, self.logs)
-        self.datasets = load_dataset(self.args[0],self.args[0].dataset_path, dataset_name=self.args.dataset_name, imb_factor=self.args.imb_factor)
+        self.datasets = load_dataset(self.args[0],self.args[0].dataset_path, dataset_name=self.args[0].dataset_name, imb_factor=self.args.imb_factor)
         self.loaders = load_loaders(self.datasets)
         self.models = load_models(args.model_paths, self.args)
         self.model_names = args.model_names
