@@ -199,7 +199,7 @@ def plot_class_num_and_error(training_labels: list, error_rate: list, save_path:
 
 def plot_class_num_and_accuracy(training_labels: list, error_rate: list, save_path: str, model_name=None, save_name=None):
     """
-    Plot a curve where x-axis is the number of samples per class and y-axis is the accuracy per class.
+    Plot a bar chart where x-axis is the class index and y-axis is the accuracy per class.
     Converts error rates to accuracy by subtracting from 1.
     Args:
         training_labels (list): List of class labels for the training set.
@@ -213,17 +213,36 @@ def plot_class_num_and_accuracy(training_labels: list, error_rate: list, save_pa
         num_samples[int(key)] = value
     # Convert error rates to accuracy
     accuracy = 1.0 - np.array(error_rate)
-    vectors = np.hstack((np.array(num_samples).reshape(-1, 1), accuracy.reshape(-1, 1)))
-    # Sort by number of samples (feature 0)
-    vectors = vectors[vectors[:, 0].argsort()]
+    
+    # Create class indices for x-axis
+    class_indices = np.arange(len(accuracy))
+    
     # Plot
-    plt.figure(figsize=(8, 5))
-    plt.plot(vectors[:, 0], vectors[:, 1], marker='o')
-    plt.xlabel('Number of Samples per Class')
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(class_indices, accuracy, alpha=0.7, edgecolor='black', linewidth=0.5)
+    
+    # Color bars based on sample count (optional enhancement)
+    sample_counts = np.array(num_samples)
+    if len(sample_counts) > 0:
+        # Normalize sample counts for coloring
+        norm_counts = (sample_counts - sample_counts.min()) / (sample_counts.max() - sample_counts.min() + 1e-8)
+        colors = plt.cm.viridis(norm_counts)
+        for bar, color in zip(bars, colors):
+            bar.set_color(color)
+    
+    plt.xlabel('Class Index')
     plt.ylabel('Accuracy per Class')
-    plt.title('Class Sample Count vs. Accuracy')
+    plt.title('Class-wise Accuracy')
     plt.ylim(0.0, 1.0)  # Set y-axis range
-    plt.grid(True)
+    plt.grid(True, alpha=0.3)
+    
+    # Add sample count as secondary information
+    ax2 = plt.gca().twinx()
+    ax2.plot(class_indices, sample_counts, 'r--', alpha=0.6, marker='o', markersize=3, linewidth=1, label='Sample Count')
+    ax2.set_ylabel('Number of Samples per Class', color='red')
+    ax2.tick_params(axis='y', labelcolor='red')
+    ax2.legend(loc='upper right')
+    
     if model_name is not None:
         plt.suptitle(f'Model: {model_name}', fontsize=14, y=1.02)
     plt.tight_layout(rect=[0, 0, 1, 0.96] if model_name is not None else None)
@@ -281,7 +300,7 @@ def plot_error_rate_comparison(error_rates_list, model_names, train_labels, save
     plt.savefig(os.path.join(save_path, 'error_rate_comparison.png'))
     plt.close()
 
-def plot_accuracy_comparison(accuracy_list, model_names, train_labels, save_path: str):
+def plot_accuracy_comparison(accuracy_list, model_names, train_labels, save_path: str, save_name=None):
     """
     Plot class-wise accuracies for multiple models as grouped bars, and normalized sample counts as a line.
     Args:
@@ -329,7 +348,7 @@ def plot_accuracy_comparison(accuracy_list, model_names, train_labels, save_path
     fig.tight_layout()
     # Add extra space for x labels and title
     plt.subplots_adjust(bottom=0.18, top=0.88)
-    plt.savefig(os.path.join(save_path, 'accuracy_comparison.png'))
+    plt.savefig(os.path.join(save_path, 'accuracy_comparison.png' if save_name is None else save_name))
     plt.close()
 
 def compare_angle_rates(angle_matrices, model_names, save_path: str):

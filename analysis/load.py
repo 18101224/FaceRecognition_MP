@@ -8,7 +8,35 @@ import torch
 from torch.utils.data import DataLoader 
 from aligners import get_aligner
 import argparse
+import os 
 
+
+def load_logs(ckpt_paths):
+    results = []
+    for ckpt_path in ckpt_paths:
+        results.append(
+            torch.load(os.path.joint(ckpt_path,'latest.pth'),weights_only=False)
+        )
+    return results
+
+def concat_args(args, logs):
+    results = []
+    temp_args = vars(args) if isinstance(args,argparse.Namespace) else args 
+    for log in logs : 
+        temp_log_args = vars(log['args']) if isinstance(log['args'],argparse.Namespace) else log['args']
+        results.append(argparse.Namespace(**{**temp_args, **temp_log_args}))
+    return results
+
+def load_models(model_paths, args):
+    results = []
+    for model_path, arg in zip(model_paths, args) : 
+        ckpt_path = os.path.join(model_path, f'{arg.ckpt_type}.pth')
+        model = get_model(arg)
+        model.load_state_dict(torch.load(ckpt_path,map_location=torch.device('cuda'))['model_state_dict'])
+        model = model.to(torch.device('cuda'))
+        model.eval()
+        results.append(model)
+    return results 
 
 def load_model(model, ckpt_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

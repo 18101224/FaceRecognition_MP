@@ -25,15 +25,9 @@ class Analysis:
         if self.args.mode == 'dataset':
             return 
         #load model
-        model_ckpt = os.path.join(self.args.model_paths[0], f'{self.args.ckpt_type}.pth')
-        log_ckpt = torch.load(os.path.join(self.args.model_paths[0], 'latest.pth'), weights_only=False)
-        log_args = vars(log_ckpt['args']) if isinstance(log_ckpt['args'], Namespace) else log_ckpt['args']
-        cur_args = vars(self.args) if isinstance(self.args, Namespace) else self.args
-        self.args = Namespace(**{**log_args, **cur_args})
-        self.model = get_model(self.args)
-        self.model.load_state_dict(torch.load(model_ckpt, map_location=self.device,weights_only=False)['model_state_dict'])
-        self.model = self.model.to(self.device)
-        self.model.eval()
+        log = load_logs(self.args.model_paths)[0]
+        self.args = concat_args(self.args, [log])[0]
+        self.model = load_models(self.args.model_paths, [self.args])[0]
         self.aligner = load_aligner(self.args.aligner_path) if self.args.aligner_path else None
         # self.backbone_analysis = Analyze_backbone(self.args)
         self.backbone = self.model.backbone 
@@ -122,14 +116,12 @@ class Analysis:
 class Compare:
     def __init__(self, args):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        train_valid_sets = load_dataset(args.dataset_path, dataset_name=args.dataset_name, imb_factor=args.imb_factor)
-        self.train_set = train_valid_sets[0]
-        self.valid_set = train_valid_sets[1]
-        self.train_loader, self.valid_loader = load_loaders(self.train_set, self.valid_set)
-        self.models = [get_model(args) for _ in range(len(args.model_paths))]
+        self.datasets = load_dataset(args.dataset_path, dataset_name=args.dataset_name, imb_factor=args.imb_factor)
+        self.loaders = load_loaders(self.datasets)
+        self.logs = load_logs(args.model_paths)
+        self.args = concat_args(args, self.logs)
+        self.models = load_models(args.model_paths, self.args)
         self.model_names = args.model_names
-        for model, model_path in zip(self.models, args.model_paths):
-            model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=False)['model_state_dict'])
         self.aligner = load_aligner(args.aligner_path) if args.aligner_path else None
         self.save_path = args.save_path
         if not os.path.exists(self.save_path):
@@ -138,22 +130,34 @@ class Compare:
     def main(self):
         train_preds, train_labels, train_confs = [], [], []
         valid_preds, valid_labels, valid_confs = [], [], []
+        if len(self.loaders) == 3 :
+            valid_preds_balanced, valid_labels_balanced, valid_confs_balanced = [], [], []
         for model in self.models :
-            preds, labels, confs = get_predictions(model, self.train_loader, self.aligner)
-            v_preds, v_labels, v_confs = get_predictions(model, self.valid_loader, self.aligner)
+            preds, labels, confs = get_predictions(model, self.loaders[0], self.aligner)
+            v_preds, v_labels, v_confs = get_predictions(model, self.loaders[1], self.aligner)
+            if len(self.loaders) == 3 :
+                v_preds_balanced, v_labels_balanced, v_confs_balanced = get_predictions(model, self.loaders[2], self.aligner)
+                valid_preds_balanced.append(v_preds_balanced)
+                valid_labels_balanced.append(v_labels_balanced)
+                valid_confs_balanced.append(v_confs_balanced)
             train_preds.append(preds)
             train_labels.append(labels)
             train_confs.append(confs)
             valid_preds.append(v_preds)
             valid_labels.append(v_labels)
             valid_confs.append(v_confs)
-
-        accuracies = []
+                
+        valid_accuracies = []
+        valid_accuracies_balanced = []
         for preds, labels in zip(valid_preds, valid_labels):
-            accuracies.append(compute_accuracy_per_class(preds=preds, labels=labels))
+            valid_accuracies.append(compute_accuracy_per_class(preds=preds, labels=labels))
+        if len(self.loaders) == 3 :
+            for preds, labels in zip(valid_preds_balanced, valid_labels_balanced):
+                valid_accuracies_balanced.append(compute_accuracy_per_class(preds=preds, labels=labels))
+        # (num_models, num_classes) * 2 
 
-
-        plot_accuracy_comparison(accuracies, self.model_names, self.train_set.labels, self.save_path)
+        plot_accuracy_comparison(valid_accuracies, self.model_names, self.datasets[0].labels, self.save_path)
+        plot_accuracy_comparison(valid_accuracies_balanced, self.model_names, self.datasets[0].labels, self.save_path, save_name='valid_confusion_matrix_balanced.png') if len(self.loaders) == 3 else None
 
         angle_matrices = [compute_angle_matrix(model) for model in self.models]
         compare_angle_rates(angle_matrices, self.model_names, self.save_path)

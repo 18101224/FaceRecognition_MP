@@ -1,3 +1,4 @@
-python3 analyze_classifier.py --dataset_name=RAF-DB \
- --model_paths checkpoint/07db3fe34-a755-44e1-9d37-cffc175f2d71 --save_path="results/RAF-DB_CE_IR50_WO_sampler" \
- --dataset_path=../data/RAF-DB_balanced --mode=analysis --ckpt_type=best_acc --model_type=ir50 
+prefix="checkpoint/"
+python3 analyze_classifier.py --dataset_name=cifar100 \
+ --dataset_path=../data --save_path=results/big_table_cifar100 --model_paths "$prefix"pm90b3bfb1-fceb-42aa-86f2-0d87faa6c1f9 "$prefix"pmc5a7410c-a568-4d0f-aec5-ae459e62b21b \
+ --model_names 'quadratic loss' 'std only loss' --imb_factor=0.01 --mode=compare --ckpt_type=best_acc
