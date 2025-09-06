@@ -24,6 +24,7 @@ def concat_args(args, logs):
     temp_args = vars(args) if isinstance(args,argparse.Namespace) else args 
     for log in logs : 
         temp_log_args = vars(log['args']) if isinstance(log['args'],argparse.Namespace) else log['args']
+        print(type(results))
         results.append(argparse.Namespace(**{**temp_args, **temp_log_args}))
         print(results[-1]['model_type'])
     return results
