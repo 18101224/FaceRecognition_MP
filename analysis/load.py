@@ -24,9 +24,10 @@ def concat_args(args, logs):
     temp_args = vars(args) if isinstance(args,argparse.Namespace) else args 
     for log in logs : 
         temp_log_args = vars(log['args']) if isinstance(log['args'],argparse.Namespace) else log['args']
-        print(type(results))
+
         results.append(argparse.Namespace(**{**temp_args, **temp_log_args}))
-        print(results[-1].model_type)
+
+
     return results
 
 def load_models(model_paths, args):
@@ -52,7 +53,6 @@ def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
     for train in ['train', 'test']:
         if 'cifar' in dataset_name : 
             n_c = 100 if '100' in dataset_name else 10
-            args = argparse.Namespace(**{'dataset_name':dataset_name})
             dataset =  get_cifar_dataset(dataset_name=dataset_name, root=dataset_path, imb_factor=0.01, imb_type='exp',train=(train=='train'), transform=get_transform(args,train=False))
             result.append(dataset)
         elif 'imagenet_lt' in dataset_name:
