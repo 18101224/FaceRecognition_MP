@@ -34,6 +34,7 @@ def get_args():
     args.add_argument('--num_workers',type=int,default=0)
     args.add_argument('--use_tf',default=False)
     args.add_argument('--pin_memory', default=False)
+    args.add_argument('--use_hcm', default=False)
     args = args.parse_args()
     if args.world_size > 1 :
         init_process_group('nccl',world_size=args.world_size,
@@ -102,15 +103,19 @@ class Trainer:
     def run_train_forward(self, images, labels):
         images = images.to(self.device)
         labels = labels.to(self.device)
-        positive, y_p = self.fetcher.sample_pairs(labels,k=1,num_workers=self.args.num_workers)
-        hard_neg, y_n1 = self.fetcher.sample_pairs(self.bank[labels,0],k=self.args.k,num_workers=self.args.num_workers)
-        head_neg, y_n2 = self.fetcher.sample_pairs(self.bank[labels,1],k=self.args.k,num_workers=self.args.num_workers) #k,bs 
-        outputs = self.model(images, positive, hard_neg, head_neg)  
-        outputs = torch.cat(outputs,dim=0)
-        label = torch.cat([labels.reshape(-1,1),y_p.reshape(-1,1),y_n1.reshape(-1,1),y_n2.reshape(-1,1)]*2,dim=0).squeeze(-1)
-        loss = torch.nn.functional.cross_entropy(outputs,label)
-        return loss, outputs[:images.shape[0]]
-
+        if self.args.use_hcm : 
+            positive, y_p = self.fetcher.sample_pairs(labels,k=1,num_workers=self.args.num_workers)
+            hard_neg, y_n1 = self.fetcher.sample_pairs(self.bank[labels,0],k=self.args.k,num_workers=self.args.num_workers)
+            head_neg, y_n2 = self.fetcher.sample_pairs(self.bank[labels,1],k=self.args.k,num_workers=self.args.num_workers) #k,bs 
+            outputs = self.model(images, positive, hard_neg, head_neg)  
+            outputs = torch.cat(outputs,dim=0)
+            label = torch.cat([labels.reshape(-1,1),y_p.reshape(-1,1),y_n1.reshape(-1,1),y_n2.reshape(-1,1)]*2,dim=0).squeeze(-1)
+            loss = torch.nn.functional.cross_entropy(outputs,label)
+            return loss, outputs[:images.shape[0]]
+        else:
+            logits = self.model(images)
+            loss = torch.nn.functional.cross_entropy(logits,labels)
+            return loss, logits
     @torch.no_grad()
     def run_valid_forward(self, images, labels):
         images = images.to(self.device)
