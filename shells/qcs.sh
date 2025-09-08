@@ -28,7 +28,7 @@ srun --exclusive -N1 -n1 --gpus=1 --cpus-per-task=32 \
   --guide_path=checkpoint/pme3c5fe43-a9ec-4a37-8ea4-f11268a0ec6e \
   --num_workers=32 \
   --world_size=1 \
-  --batch_size=128 \
+  --batch_size=64 \
   --n_epochs=200 \
   --learning_rate="$lr" \
   --use_sampler=True \
