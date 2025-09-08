@@ -1,19 +1,13 @@
-#!/bin/bash
-make_cmd () {
 
-  local EXTRA=$1        # loss·weight·스케줄 인자 묶음
-  python3 train_imbalanced.py \
-        --batch_size=128 --n_epochs=200 --weight_decay=5e-4 \
-         --momentum=0.9 --world_size=1 \
-         --imb_type=exp --imb_factor=0.01 --cos=True \
-        --dataset_path=../data/RAF-DB_balanced --aug=True --cutout=True --use_wandb=True --use_sampler=True --feature_branch=True --use_tf=True --num_workers=16 \
-         --cosine_scaling=4 --temperature=0.1 --cl_weight=1 --ce_weight=1 $EXTRA
-}
 
-#with cos 
-for lr in 2e-5 9e-6 ; do
-for weight in 0.3 0.7 ; do
-CUDA_VISIBLE_DEVICES=2 make_cmd "--learning_rate=$lr --dataset_name=RAF-DB --loss=BCL --model_type=ir50 --cl_weight=$weight --ce_weight=1" 
-done
-done
-wait
+CUDA_VISIBLE_DEVICES=1 python3 QCS_hcm.py \
+  --dataset_path=../data/RAF-DB_balanced \
+  --dataset_name=RAF-DB \
+  --guide_path=checkpoint/pme3c5fe43-a9ec-4a37-8ea4-f11268a0ec6e \
+  --num_workers=32 \
+  --world_size=1 \
+  --batch_size=32 \
+  --n_epochs=200 \
+  --learning_rate=1e-4 \
+  --use_sampler=True \
+  --model_type=ir50 &

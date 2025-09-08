@@ -182,8 +182,6 @@ class Pyramid(nn.Module):
         features = list(self.ir_back(x)[-1])
         features = [self.convs[i](features[i]) for i in range(3)]
         features = [self.embeds[i](features[i]).flatten(2).transpose(1, 2) if i<=1 else self.embeds[i](features[i]) for i in range(3)]
-        for feature in features :
-            print(feature.shape)
         out = torch.cat(features, dim=1)
         cls, patches = self.ViT_base(out)
         return cls, patches 
@@ -197,7 +195,6 @@ class Pyramid(nn.Module):
         x_n2 : 2,B,C,H,W
         '''
         B,C,H,W = x_a.shape
-        print(x_a.shape)
         x_a, x_a_0 = self.process_convs(x_a)
         if x_p is None : 
             return x_a 
