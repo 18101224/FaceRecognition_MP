@@ -199,9 +199,9 @@ class Backbone(Module):
     def forward(self, x):
         x = F.interpolate(x, size=112)
         x = self.input_layer(x)
-        x = self.body1(x)
-        x = self.body2(x)
-        x = self.body3(x)
-        x = F.adaptive_avg_pool2d(x, 1).reshape(x.shape[0],-1)
-        return x
+        x1 = self.body1(x)
+        x2 = self.body2(x1)
+        x3 = self.body3(x2)
+        x = F.adaptive_avg_pool2d(x3, 1).reshape(x.shape[0],-1)
+        return x, [x1,x2,x3]
 

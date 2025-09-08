@@ -1,4 +1,4 @@
-from .fer import FER,FER_KFOLD
+from .fer import FER,FER_KFOLD,ClassBatchSampler
 from .sampler import ImbalancedDatasetSampler
 from .Imbalanced import get_cifar_dataset, Large_dataset
 import numpy as np
@@ -9,7 +9,7 @@ from .sampler_wrapper import DistributedSamplerWrapper
 from .transform import get_transform
 from .noise_dataset import get_kfolds, get_loaders, get_noise_dataset
 # Public symbols that will be available when using `from dataset import *`
-__all__ = ['get_cifar_dataset', 'FER', 'FER_KFOLD', 'get_kfolds', 'get_transform', 'get_loaders', 'DistributedSamplerWrapper', 'Large_dataset', 'get_noise_dataset', 'ImbalancedDatasetSampler']
+__all__ = ['get_cifar_dataset', 'FER', 'FER_KFOLD', 'get_kfolds', 'get_transform', 'get_loaders', 'DistributedSamplerWrapper', 'Large_dataset', 'get_noise_dataset', 'ImbalancedDatasetSampler', 'ClassBatchSampler']
 
 
 def visualize_label_distribution(labels, save_path=None, figsize=(15, 5), class_names=None):

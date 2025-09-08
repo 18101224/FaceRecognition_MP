@@ -20,8 +20,10 @@ from .sampler import ImbalancedDatasetSampler
 from .sampler_wrapper import DistributedSamplerWrapper
 import numpy as np
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 
+__all__ = ['FER','FER_KFOLD','ClassBatchSampler']
 class FER(Dataset):
     def __init__(self,args,transform,train=True, idx=True, balanced=False):
         super().__init__()
@@ -105,4 +107,67 @@ class FER_KFOLD(FER):
         result = torch.cat((torch.tensor(self.val_idx),torch.tensor([self.fold_idx]*len(self.val_idx)))) #deterministic. 
         return result
 
+
+class ClassBatchSampler(FER) : 
+    def __init__(self,args,transform,train=True, idx=True, balanced=False):
+        super().__init__(args,transform,train=train, idx=idx, balanced=balanced)
+
+        self.labels = torch.tensor(self.labels,dtype=torch.long)
+        num_classes = torch.max(self.labels) + 1
+        self.class_to_idx = [[] for _ in range(num_classes)]
+        for i,c in enumerate(self.labels.tolist()):
+            self.class_to_idx[c].append(i)
+
+        self.class_counts = [len(v) for v in self.class_to_idx]
+    
+    def _load_one(self,path):
+        img = Image.open(path)
+        if isinstance(self.transform, list):
+            samples = [tr(img) for tr in self.transform]
+            return samples
+        else:
+            return self.transform(img)
+    
+    def __len__(self):
+        return len(self.labels)
+    
+    def sample_pairs(self,labels_batch,k=2,num_workers=0, replace_if_insufficient=True):
+        '''
+        labels_batch: bs
+        return: (bs, k, 3, h, w), (bs, k)
+        '''
+    
+        bs = labels_batch.numel()
+        fetch_list = []
+        for c in labels_batch.tolist():
+            pool = self.class_to_idx[c]
+            cnt = len(pool)
+            if cnt >= k:
+                perm = torch.randperm(cnt)[:k].tolist()
+                picks = [pool[i] for i in perm]
+            else:
+                raise ValueError(f"Class {c} has only {cnt} samples, but {k} are required")
+            fetch_list.extend( [self.paths[i] for i in picks] )
+        
+        if num_workers and num_workers > 0 :
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                imgs = list(executor.map(lambda p_c:self._load_one(p_c),fetch_list))
+        else:
+            imgs = [self._load_one(p_c) for p_c in fetch_list]
+
+        # Handle case where _load_one returns a list (when transform is a list)
+        if isinstance(self.transform, list) and len(imgs) > 0 and isinstance(imgs[0], list):
+            # If transform is a list, imgs will be a list of lists
+            # We need to flatten or select one transformation
+            # For now, let's select the first transformation from each
+            imgs = [img[0] if isinstance(img, list) else img for img in imgs]
+
+        batch = torch.stack(imgs)
+        batch = batch.view(bs,k,*batch.shape[1:])
+        if batch.shape[1] == 1:
+            batch = batch.squeeze(1)
+            return batch.to(labels_batch.device), labels_batch.reshape(-1,1)
+        return batch.to(labels_batch.device), labels_batch.unsqueeze(0).repeat(k,1).to(labels_batch.device)
+
+    
 
