@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -J hcir_qcs
 #SBATCH -A m1248_g 
-#SBATCH -q shared
+#SBATCH -q debug
 #SBATCH -N 1
-#SBATCH -t 10:00:00
-#SBATCH --gpus-per-node=1
-#SBATCH --ntasks-per-node=1
+#SBATCH -t 20:00:00
+#SBATCH --gpus-per-node=4
+#SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
@@ -19,7 +19,7 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 
 
 # Launch as one job step with 4 tasks; bind each task to a distinct GPU
-srun --exclusive --ntasks=1 --gpus-per-task=1 --cpus-per-task=32 --gpu-bind=map_gpu:0 \
+srun --exclusive --ntasks=4 --gpus-per-task=1 --cpus-per-task=32 --gpu-bind=map_gpu:0,1,2,3 \
   bash -c 'lr=${@:$(($SLURM_LOCALID+1)):1}; \
   echo "Task $SLURM_LOCALID using CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES, lr=$lr"; \
   python3 QCS_hcm.py \
@@ -32,4 +32,4 @@ srun --exclusive --ntasks=1 --gpus-per-task=1 --cpus-per-task=32 --gpu-bind=map_
     --n_epochs=200 \
     --learning_rate="$lr" \
     --use_sampler=True --use_tf=True \
-    --model_type=ir50 --pin_memory=True ' _ 2e-5
+    --model_type=ir50 --pin_memory=True --use_hcm=True ' _ 2e-5 9e-6 1e-5 3e-5
