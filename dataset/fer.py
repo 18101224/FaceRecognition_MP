@@ -42,12 +42,26 @@ class FER(Dataset):
         self.img_num_list = None 
         self.get_img_num_per_cls()
         self.idx = idx 
+        # Optional in-memory preload of images for faster access
+        self.pin_memory = getattr(args, 'pin_memory', False)
+        self.path_to_index = {p: i for i, p in enumerate(self.paths)}
+        self.preloaded_images = None
+        if self.pin_memory:
+            self.preloaded_images = []
+            for p in tqdm(self.paths, disable=False):
+                # Load image content into memory and detach from file handle
+                img = Image.open(p)
+                img = img.copy()
+                self.preloaded_images.append(img)
 
     def __len__(self):
         return self.labels.shape[0]
 
     def __getitem__(self,idx):
-        img = Image.open(self.paths[idx])
+        if self.preloaded_images is not None:
+            img = self.preloaded_images[idx]
+        else:
+            img = Image.open(self.paths[idx])
         if isinstance(self.transform, list):
             samples = [tr(img) for tr in self.transform]
             if self.idx : 
@@ -121,7 +135,11 @@ class ClassBatchSampler(FER) :
         self.class_counts = [len(v) for v in self.class_to_idx]
     
     def _load_one(self,path):
-        img = Image.open(path)
+        if getattr(self, 'preloaded_images', None) is not None:
+            i = self.path_to_index[path]
+            img = self.preloaded_images[i]
+        else:
+            img = Image.open(path)
         if isinstance(self.transform, list):
             samples = [tr(img) for tr in self.transform]
             return samples

@@ -34,4 +34,4 @@ srun --exclusive --ntasks=4 --gpus-per-task=1 --cpus-per-task=32 --gpu-bind=map_
     --n_epochs=200 \
     --learning_rate="$lr" \
     --use_sampler=True --use_tf=True \
-    --model_type=ir50' _ 2e-5 9e-6 1e-5 3e-5
+    --model_type=ir50 --pin_memory=True ' _ 2e-5 9e-6 1e-5 3e-5
