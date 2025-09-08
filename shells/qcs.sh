@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J hcir_qcs
 #SBATCH -A m1248_g 
-#SBATCH -q debug
+#SBATCH -q regular
 #SBATCH -N 1
 #SBATCH -t 20:00:00
 #SBATCH --gpus-per-node=4
