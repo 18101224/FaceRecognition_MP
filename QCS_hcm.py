@@ -168,7 +168,7 @@ class Trainer:
         train_loss, train_acc = self.train_epoch()
         valid_loss, valid_acc = self.valid_epoch()
 
-        if self.best < valid_acc : 
+        if self.best_acc < valid_acc : 
             self.best_acc = valid_acc
             if self.args.world_size == 1 or self.args.rank == 0 :
                 self.save(True)
