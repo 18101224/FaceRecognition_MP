@@ -32,6 +32,7 @@ def get_args():
     args.add_argument('--k',type=int,default=2)
     args.add_argument('--use_sampler',default=False)
     args.add_argument('--num_workers',type=int,default=0)
+    args.add_argument('--use_tf',default=False)
     args = args.parse_args()
     if args.world_size > 1 :
         init_process_group('nccl',world_size=args.world_size,
@@ -42,6 +43,10 @@ def get_args():
         torch.cuda.set_device(args.local_rank)
     else:
         torch.cuda.set_device(0)
+    if args.use_tf :
+        torch.backends.cuda.matmul.allow_tf32 = True 
+        torch.backends.cudnn.allow_tf32 = True 
+        torch.backends.cudnn.benchmark = True 
     return args
 
 class Trainer:
@@ -56,8 +61,8 @@ class Trainer:
         else:
             train_sampler = None if self.args.world_size == 1 else DistributedSampler(self.train_set,shuffle=True)
         self.valid_sampler = DistributedSampler(self.valid_set,shuffle=False) if self.args.world_size > 1 else None
-        self.train_loader = DataLoader(self.train_set,batch_size=self.args.batch_size,sampler=train_sampler)
-        self.valid_loader = DataLoader(self.valid_set,batch_size=self.args.batch_size,sampler=self.valid_sampler)
+        self.train_loader = DataLoader(self.train_set,batch_size=self.args.batch_size,sampler=train_sampler,num_workers=self.args.num_workers, pin_memory=True)
+        self.valid_loader = DataLoader(self.valid_set,batch_size=self.args.batch_size,sampler=self.valid_sampler,num_workers=self.args.num_workers, pin_memory=True)
         self.fetcher = ClassBatchSampler(args, transform=get_transform(args,train=True),idx=False)
         self.model = get_QCS_model(self.args.model_type,self.args.dim,7).cuda()
         self.model = self.model.to(self.device) if self.args.world_size == 1 else DDP(self.model,device_ids=[self.args.local_rank],find_unused_parameters=True)
