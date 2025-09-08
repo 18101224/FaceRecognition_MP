@@ -14,6 +14,10 @@
 #SBATCH -C gpu&hbm80g
 
 
+source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
+conda activate /pscratch/sd/s/sgkim/hcir/cv 
+
+
 
 
 for lr in 2e-5 9e-6 1e-5 3e-5; do
