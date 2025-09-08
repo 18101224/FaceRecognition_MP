@@ -185,7 +185,7 @@ class ClassBatchSampler(FER) :
         if batch.shape[1] == 1:
             batch = batch.squeeze(1)
             return batch.to(labels_batch.device), labels_batch.reshape(-1,1)
-        return batch.to(labels_batch.device), labels_batch.unsqueeze(0).repeat(k,1).to(labels_batch.device)
+        return batch.to(labels_batch.device), labels_batch.unsqueeze(1).repeat(1,k).to(labels_batch.device)
 
     
 
