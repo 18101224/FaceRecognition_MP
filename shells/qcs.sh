@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J hcir_qcs
 #SBATCH -A m1248_g 
-#SBATCH -q debug
+#SBATCH -q regular
 #SBATCH -N 1
-#SBATCH -t 00:30:00
+#SBATCH -t 24:00:00
 #SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=32
@@ -16,8 +16,6 @@
 
 source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
 conda activate /pscratch/sd/s/sgkim/hcir/cv 
-
-
 
 
 # Launch as one job step with 4 tasks; bind each task to a distinct GPU
