@@ -13,6 +13,8 @@
 #SBATCH --mail-type=ALL
 #SBATCH -C gpu
 
+source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
+conda activate /pscratch/sd/s/sgkim/hcir/cv 
 
 
 
