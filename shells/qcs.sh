@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J hcir_qcs
 #SBATCH -A m1248_g 
-#SBATCH -q debug
+#SBATCH -q regular
 #SBATCH -N 1
-#SBATCH -t 00:30:00
+#SBATCH -t 12:00:00
 #SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -33,3 +33,4 @@ torchrun \
     --learning_rate=2e-5 \
     --use_sampler=True --use_tf=True \
     --model_type=kp_rpe --pin_memory=True --loss=HCM --cl_weight=0.3
+
