@@ -30,7 +30,7 @@ torchrun \
     --world_size=4 \
     --batch_size=64 \
     --n_epochs=200 \
-    --learning_rate=2e-5 \
+    --learning_rate=1e-5 \
     --use_sampler=True --use_tf=True \
     --model_type=kp_rpe --pin_memory=True --loss=HCM --cl_weight=0.3
 
