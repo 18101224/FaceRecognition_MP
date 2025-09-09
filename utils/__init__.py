@@ -14,10 +14,7 @@ from .eval_quality import *
 from .pushover import send_message
 from .epx_log import get_exp_id
 
-def get_exp_name():
-    now = datetime.now()
-    ssmmhhdd = f"{now.month:02}{now.day:02}{now.hour:02}{now.minute:02}{now.second:02}"
-    return ssmmhhdd
+__all__ = ['get_acc', 'get_macro_acc', 'get_norm', 'get_pd', 'save_pd', 'save_pkl', 'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload']
 
 def get_acc(x,y):
     '''

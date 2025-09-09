@@ -61,13 +61,9 @@ class DeepComplexModule(nn.Module):
         return out.abs()
 
 class ResidualModule(nn.Module):
-    def __init__(self, dim, depth, regular_simplex=False, num_classes=None):
+    def __init__(self, dim, depth,):
         super().__init__()
-        if regular_simplex : 
-            blocks = [nn.Linear(dim, num_classes-1)]
-            dim = num_classes-1
-        else:
-            blocks = [nn.Linear(dim, dim)]
+        blocks = [nn.Linear(dim, dim)]
         if depth > 1:
             blocks += [
                 nn.Linear(dim, dim) for _ in range(depth-1)

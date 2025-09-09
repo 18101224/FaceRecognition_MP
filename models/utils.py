@@ -289,7 +289,7 @@ def compute_class_mean(features, labels, legacy, alpha):
     if present.any():
         # Spherical interpolation (differentiable) between legacy and batch means
         updated[present] = slerp(legacy[present], batch_means[present], t=alpha)
-
+    
     return updated
 
 # ---------- 예시 검증 ----------
