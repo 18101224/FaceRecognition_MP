@@ -53,6 +53,8 @@ def get_transform(args, train):
         return validation_transforms[dataset_name]
 
     loss = getattr(args,'loss','CE')
+    if not include(loss, ['CE', 'LDAM', 'BS', 'DRW', 'RIDE', 'NCL', 'BCL']):
+        loss = 'CE'
     if include(loss, ['CE', 'LDAM', 'BS', 'DRW', 'RIDE']):
         large_size_tr = [
                 transforms.RandomHorizontalFlip(),

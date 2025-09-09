@@ -14,6 +14,9 @@ from datetime import timedelta
 from utils import get_exp_name
 import numpy as np
 from utils import get_acc
+from aligners import get_aligner
+from Loss import HCM
+
 
 def get_args():
     args = ArgumentParser()
@@ -35,7 +38,11 @@ def get_args():
     args.add_argument('--use_tf',default=False)
     args.add_argument('--pin_memory', default=False)
     args.add_argument('--use_hcm', default=False)
+    args.add_argument('--loss', type=str, choices=['CE','QCS','HCM'])
+    args.add_argument('--cl_weight',type=float,default=0.3)
+    args.add_argument('--classification', default=False)
     args = args.parse_args()
+    vars(args)['server'] = os.getenv('SERVER','0')
     if args.world_size > 1 :
         init_process_group('nccl',world_size=args.world_size,
                            timeout=timedelta(minutes=60))
@@ -51,10 +58,23 @@ def get_args():
         torch.backends.cudnn.benchmark = True 
     return args
 
+def get_model(args):
+    loss = getattr(args,'loss','CE')
+    aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m') if args.model_type == 'kp_rpe' else None
+    if loss == 'CE' :
+        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True), aligner
+    elif loss == 'QCS' :
+        return get_QCS_model(args.model_type,args.dim,7), aligner
+    elif loss == 'HCM' :
+        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True), aligner
+    else:
+        raise ValueError(f'Invalid loss: {loss}')
+
 class Trainer:
     def __init__(self,args):
         self.args = args 
         self.device = self.args.local_rank if self.args.world_size > 1 else torch.device('cuda')
+        vars(self.args)['device'] = self.device
         self.train_set = FER(args,train=True,idx=False, transform=get_transform(self.args,train=True))
         self.valid_set = FER(args,train=False,idx=False, transform=get_transform(self.args,train=False))
         if args.use_sampler : 
@@ -66,8 +86,9 @@ class Trainer:
         self.train_loader = DataLoader(self.train_set,batch_size=self.args.batch_size,sampler=train_sampler,num_workers=self.args.num_workers, pin_memory=self.args.pin_memory)
         self.valid_loader = DataLoader(self.valid_set,batch_size=self.args.batch_size,sampler=self.valid_sampler,num_workers=self.args.num_workers, pin_memory=self.args.pin_memory)
         self.fetcher = ClassBatchSampler(args, transform=get_transform(args,train=True),idx=False)
-        self.model = get_QCS_model(self.args.model_type,self.args.dim,7).cuda()
-        self.model = self.model.to(self.device) if self.args.world_size == 1 else DDP(self.model,device_ids=[self.args.local_rank],find_unused_parameters=True)
+        self.model,self.aligner = get_model(args)
+        self.model = self.model.to(self.device) if self.args.world_size == 1 else DDP(self.model.cuda(),device_ids=[self.args.local_rank],find_unused_parameters=True)
+        self.aligner = self.aligner.to(self.device)
         self.opt = SAM(self.model.parameters(),base_optimizer=torch.optim.AdamW,lr=self.args.learning_rate,weight_decay=self.args.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt,gamma=0.98)
         self.guide_network = ImbalancedModel(num_classes=7,model_type='ir50',)
@@ -76,6 +97,8 @@ class Trainer:
         self.id = self.init_wandb()
         self.init_sims()
         self.log = []
+        self.hcm = HCM(args=args,train_set=self.train_set)
+
     def init_sims(self):
         # dynamic or static 
         weight = self.guide_network.get_kernel() # dim, num_classes
@@ -103,24 +126,33 @@ class Trainer:
     def run_train_forward(self, images, labels):
         images = images.to(self.device)
         labels = labels.to(self.device)
-        if self.args.use_hcm : 
-            positive, y_p = self.fetcher.sample_pairs(labels,k=1,num_workers=self.args.num_workers)
-            hard_neg, y_n1 = self.fetcher.sample_pairs(self.bank[labels,0],k=self.args.k,num_workers=self.args.num_workers)
-            head_neg, y_n2 = self.fetcher.sample_pairs(self.bank[labels,1],k=self.args.k,num_workers=self.args.num_workers) #k,bs 
-            outputs = self.model(images, positive, hard_neg, head_neg)  
-            outputs = torch.cat(outputs,dim=0)
-            label = torch.cat([labels.reshape(-1,1),y_p.reshape(-1,1),y_n1.reshape(-1,1),y_n2.reshape(-1,1)]*2,dim=0).squeeze(-1)
-            loss = torch.nn.functional.cross_entropy(outputs,label)
-            return loss, outputs[:images.shape[0]]
+        if self.args.loss == 'HCM':
+            loss, outputs = self.hcm(images, labels, self.fetcher, self.model, self.aligner)
+            return loss, outputs
         else:
-            logits = self.model(images)
-            loss = torch.nn.functional.cross_entropy(logits,labels)
-            return loss, logits
+
+            if self.args.use_hcm : 
+                positive, y_p = self.fetcher.sample_pairs(labels,k=1,num_workers=self.args.num_workers)
+                hard_neg, y_n1 = self.fetcher.sample_pairs(self.bank[labels,0],k=self.args.k,num_workers=self.args.num_workers)
+                head_neg, y_n2 = self.fetcher.sample_pairs(self.bank[labels,1],k=self.args.k,num_workers=self.args.num_workers) #k,bs 
+                outputs = self.model(images, positive, hard_neg, head_neg)  
+                outputs = torch.cat(outputs,dim=0)
+                label = torch.cat([labels.reshape(-1,1),y_p.reshape(-1,1),y_n1.reshape(-1,1),y_n2.reshape(-1,1)]*2,dim=0).squeeze(-1)
+                loss = torch.nn.functional.cross_entropy(outputs,label)
+                return loss, outputs[:images.shape[0]]
+            else:
+                logits = self.model(images)
+                loss = torch.nn.functional.cross_entropy(logits,labels)
+                return loss, logits
+
+
     @torch.no_grad()
     def run_valid_forward(self, images, labels):
         images = images.to(self.device)
         labels = labels.to(self.device)
-        logits = self.model(images)
+        if self.aligner is not None:
+            _,_,keypoint,_,_,_ = self.aligner(images)
+        logits = self.model(images) if self.aligner is None else self.model(images, keypoint=keypoint)
         loss = torch.nn.functional.cross_entropy(logits,labels)
         return loss, logits
     
@@ -213,3 +245,4 @@ if __name__ == '__main__':
     args = get_args()
     trainer = Trainer(args)
     trainer.train()
+

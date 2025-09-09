@@ -13,7 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
 from .kp_rpe import get_kprpe_pretrained
 
-__all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone', 'get_model']
+__all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone', 'get_model', 'get_kprpe_pretrained']
 
 if False : 
     from .kp_rpe import *

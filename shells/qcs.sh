@@ -3,7 +3,7 @@
 #SBATCH -A m1248_g 
 #SBATCH -q regular
 #SBATCH -N 1
-#SBATCH -t 20:00:00
+#SBATCH -t 24:00:00
 #SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=32
@@ -32,4 +32,4 @@ srun --exclusive --ntasks=4 --gpus-per-task=1 --cpus-per-task=32 --gpu-bind=map_
     --n_epochs=200 \
     --learning_rate="$lr" \
     --use_sampler=True --use_tf=True \
-    --model_type=ir50 --pin_memory=True --use_hcm=True ' _ 2e-5 9e-6 1e-5 3e-5
+    --model_type=kp_rpe --pin_memory=True --loss=HCM --cl_weight=0.3 ' _ 2e-5 9e-6 1e-5 3e-5

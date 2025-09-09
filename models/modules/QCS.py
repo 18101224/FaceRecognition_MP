@@ -6,6 +6,8 @@ from timm.models.layers import trunc_normal_, DropPath
 from .vit import VisionTransformer, PatchEmbed
 from functools import partial 
 from .ir50 import Backbone
+import sys;sys.path.extend('..')
+from ..kp_rpe import get_kprpe_pretrained
 
 class Mlp(nn.Module):
     """
@@ -30,7 +32,8 @@ class Mlp(nn.Module):
 
 def get_QCS_model(backbone_type,dim, num_classes):
     backbone_dict={
-        'ir50':(partial(Backbone,checkpoint_path='checkpoint/ir50.pth'),[64,128,256])
+        'ir50':(partial(Backbone,checkpoint_path='checkpoint/ir50.pth'),[64,128,256]),
+        'kp_rpe':(partial(get_kprpe_pretrained,cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m'),[512,1024,256])
     }
     backbone = backbone_dict[backbone_type][0]()
     return Pyramid(embed_dim=dim, num_classes=num_classes, dims=backbone_dict[backbone_type][1], backbone=backbone)
