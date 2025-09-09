@@ -8,6 +8,7 @@ from torch import nn
 import sys
 sys.path.extend('..')
 from utils import *
+import os
 import torchvision.models as tv_models
 from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
@@ -208,7 +209,8 @@ class ImbalancedModel(nn.Module):
                     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                         nn.init.kaiming_normal_(m.weight)
         if learnable_input_dist:
-            self.input_dist = nn.Parameter(torch.zeros((2,3),requires_grad=True))
+            init_input_dist = torch.cat([torch.zeros((1,3)), torch.ones((1,3))], dim=0)
+            self.input_dist = nn.Parameter(init_input_dist, requires_grad=True)
         if input_layer :
             raise ValueError('input_layer is not supported')
         self.freeze = freeze_backbone
@@ -228,8 +230,10 @@ class ImbalancedModel(nn.Module):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
-        if self.input_dist is not False :
-            x = (x-self.input_dist[0].reshape(1,3,1,1))/self.input_dist[1].reshape(1,3,1,1)
+        if hasattr(self, 'input_dist') and self.input_dist is not False:
+            mean = self.input_dist[0].reshape(1,3,1,1)
+            std = torch.clamp(self.input_dist[1], min=1e-6).reshape(1,3,1,1)
+            x = (x - mean) / (std+1e-8)
 
         to_with = torch.enable_grad if not self.freeze else torch.no_grad
         
@@ -241,9 +245,10 @@ class ImbalancedModel(nn.Module):
         if isinstance(z, tuple):
             z = z[0]
 
-        z = nn.functional.normalize(z, dim=-1) if self.cos else z
-        z_ = nn.functional.normalize(self.feature_module(z), dim=-1) if self.feature_module is not False else z 
-        
+        z = nn.functional.normalize(z, dim=-1, eps=1e-6) if self.cos else z
+
+        z_ = nn.functional.normalize(self.feature_module(z), dim=-1, eps=1e-6) if self.feature_module is not False else z 
+
         weight = self.get_kernel() # dim, num_classes
         logit = z_ @ weight
 

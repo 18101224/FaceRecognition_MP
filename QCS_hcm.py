@@ -178,7 +178,7 @@ class Trainer:
     
     def train_epoch(self,):
         self.model.train()
-        if self.args.freeze_backbone:
+        if self.args.freeze_backbone :
             to_freeze = self.model.module if self.args.world_size > 1 else self.model
             to_freeze.freeze_backbone()
         total_loss = 0
@@ -255,9 +255,12 @@ class Trainer:
         if self.args.world_size == 1 or self.args.rank == 0 :
             self.log.append(log)
             wandb.log(log)
+            print(log)
         
         if self.args.world_size> 1: 
             dist.barrier()
+
+        
         return train_loss, train_acc, valid_loss, valid_acc
 
     def train(self,):
