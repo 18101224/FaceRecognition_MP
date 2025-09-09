@@ -41,6 +41,9 @@ def get_args():
     args.add_argument('--loss', type=str, choices=['CE','QCS','HCM'])
     args.add_argument('--cl_weight',type=float,default=0.3)
     args.add_argument('--classification', default=False)
+    args.add_argument('--learnable_input_dist', default=False)
+    args.add_argument('--input_layer', default=False)
+    args.add_argument('--freeze_backbone', default=False)
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
     if args.world_size > 1 :
@@ -62,11 +65,13 @@ def get_model(args):
     loss = getattr(args,'loss','CE')
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m') if args.model_type == 'kp_rpe' else None
     if loss == 'CE' :
-        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True), aligner
+        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True,
+         feature_model=args.feature_module, learnable_input_dist=args.learnable_input_dist, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone), aligner
     elif loss == 'QCS' :
         return get_QCS_model(args.model_type,args.dim,7), aligner
     elif loss == 'HCM' :
-        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True), aligner
+        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True,
+         feature_model=args.feature_module, learnable_input_dist=args.learnable_input_dist, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone), aligner
     else:
         raise ValueError(f'Invalid loss: {loss}')
 
@@ -168,6 +173,9 @@ class Trainer:
     
     def train_epoch(self,):
         self.model.train()
+        if self.args.freeze_backbone:
+            to_freeze = self.model.module if self.args.world_size > 1 else self.model
+            to_freeze.freeze_backbone()
         total_loss = 0
         total_acc = 0
         for images, labels in tqdm(self.train_loader, disable=self.args.world_size > 1 and self.args.rank != 0):

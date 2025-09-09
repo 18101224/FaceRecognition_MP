@@ -15,6 +15,28 @@ from .kp_rpe import get_kprpe_pretrained
 
 __all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone', 'get_model', 'get_kprpe_pretrained']
 
+
+model_dict = {
+    'resnet32_64d': partial(resnet32_backbone, factor=1),
+    'resnet32_128d': partial(resnet32_backbone, factor=2),
+    'resnet50': partial(resnet50_backbone, pretrained=False),
+    'resnext50': partial(resnext50_backbone, pretrained=False),
+    'ir50': partial(ir50_backbone, checkpoint_path='checkpoint/ir50.pth'),
+    'e2_resnet32': e2_resnet32,
+    'e2_resnext50': e2_resnext50,
+    'kp_rpe': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m')
+}
+dim_dict = {
+    'resnet32_64d': (64, 512, 128),
+    'resnet32_128d': (128, 512, 128),
+    'resnet50': (2048, 2048, 1024),
+    'resnext50': (2048, 2048, 1024),
+    'ir50': (256, 512, 128),
+    'e2_resnet32': (256, 256, 128),
+    'e2_resnext50': (2048, 2048, 1024),
+    'kp_rpe': (512, 1024, 256)
+}
+
 if False : 
     from .kp_rpe import *
     class kprpe_fer(nn.Module):
@@ -143,27 +165,9 @@ def get_feature_module(feature_module, dim_in, depth, regular_simplex=False, num
 class ImbalancedModel(nn.Module):
     # The model_dict dictionary maps model type strings to their corresponding constructor functions.
     # You can use it to dynamically select and instantiate a model based on a string key.
-    model_dict = {
-        'resnet32_64d': partial(resnet32_backbone, factor=1),
-        'resnet32_128d': partial(resnet32_backbone, factor=2),
-        'resnet50': partial(resnet50_backbone, pretrained=False),
-        'resnext50': partial(resnext50_backbone, pretrained=False),
-        'ir50': partial(ir50_backbone, checkpoint_path='checkpoint/ir50.pth'),
-        'e2_resnet32': e2_resnet32,
-        'e2_resnext50': e2_resnext50,
-        'kp_rpe': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m')
-    }
-    dim_dict = {
-        'resnet32_64d': (64, 512, 128),
-        'resnet32_128d': (128, 512, 128),
-        'resnet50': (2048, 2048, 1024),
-        'resnext50': (2048, 2048, 1024),
-        'ir50': (256, 512, 128),
-        'e2_resnet32': (256, 256, 128),
-        'e2_resnext50': (2048, 2048, 1024),
-        'kp_rpe': (512, 1024, 256)
-    }
-    def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False, regular_simplex=False, cos=True):
+
+    def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False,  
+    regular_simplex=False, cos=True, learnable_input_dist=False, input_layer = False, freeze_backbone=False):
         if model_type not in self.model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
         super().__init__()
@@ -181,7 +185,7 @@ class ImbalancedModel(nn.Module):
 
         if self.feature_module : 
             feature_module, depth = feature_module.split('_')
-            self.feature_module = get_feature_module(feature_module, dim_in, int(depth), regular_simplex, num_classes)
+            self.feature_module = get_feature_module(feature_module, dim_in, int(depth))
         
         regular_simplex = num_classes - 1 if regular_simplex else dim_in
         self.cos = cos 
@@ -201,7 +205,15 @@ class ImbalancedModel(nn.Module):
                 for m in t.modules():
                     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                         nn.init.kaiming_normal_(m.weight)
+        if learnable_input_dist:
+            self.input_dist = nn.Parameter(torch.zeros((2,3),requires_grad=True))
+        if input_layer :
+            raise ValueError('input_layer is not supported')
+        self.freeze_backbone = freeze_backbone
 
+    def freeze_backbone(self):
+        for p in self.backbone.parameters():
+            p.requires_grad = False
     
 
     def get_kernel(self):
@@ -214,10 +226,16 @@ class ImbalancedModel(nn.Module):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
-        if keypoint is not None:
-            z = self.backbone(x, keypoint) 
-        else:
-            z = self.backbone(x)
+        if self.input_dist :
+            x = (x-self.input_dist[0])/self.input_dist[1]
+        to_with = torch.enable_grad if not self.freeze_backbone else torch.no_grad
+
+        with to_with():
+            if keypoint is not None:
+                z = self.backbone(x, keypoint) 
+            else:
+                z = self.backbone(x)
+
         z = nn.functional.normalize(z, dim=-1) if self.cos else z
         z_ = nn.functional.normalize(self.feature_module(z), dim=-1) if self.feature_module is not False else z 
         
@@ -247,7 +265,8 @@ class ImbalancedModel(nn.Module):
 
         return backbone_feat, cls_feat, bcl_feat, center_feat, logit
 
-        
+
+
 
 def get_sims(kernel):
     # kernel shape : dim, n_classes
