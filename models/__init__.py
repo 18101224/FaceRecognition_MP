@@ -12,6 +12,7 @@ import torchvision.models as tv_models
 from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
 from .kp_rpe import get_kprpe_pretrained
+import torch 
 
 __all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone', 'get_model', 'get_kprpe_pretrained']
 
@@ -158,7 +159,7 @@ def get_feature_module(feature_module, dim_in, depth, regular_simplex=False, num
     if feature_module == 'deepcomplex':
         return DeepComplexModule(dim_in, depth, regular_simplex, num_classes)
     elif feature_module == 'residual':
-        return ResidualModule(dim_in, depth, regular_simplex, num_classes)
+        return ResidualModule(dim_in, depth)
     else:
         raise ValueError(f"Invalid feature module: {feature_module}")
 
@@ -210,7 +211,7 @@ class ImbalancedModel(nn.Module):
             self.input_dist = nn.Parameter(torch.zeros((2,3),requires_grad=True))
         if input_layer :
             raise ValueError('input_layer is not supported')
-        self.freeze_backbone = freeze_backbone
+        self.freeze = freeze_backbone
 
     def freeze_backbone(self):
         for p in self.backbone.parameters():
@@ -227,15 +228,18 @@ class ImbalancedModel(nn.Module):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
-        if self.input_dist :
-            x = (x-self.input_dist[0])/self.input_dist[1]
-        to_with = torch.enable_grad if not self.freeze_backbone else torch.no_grad
+        if self.input_dist is not False :
+            x = (x-self.input_dist[0].reshape(1,3,1,1))/self.input_dist[1].reshape(1,3,1,1)
 
+        to_with = torch.enable_grad if not self.freeze else torch.no_grad
+        
         with to_with():
             if keypoint is not None:
                 z = self.backbone(x, keypoint) 
             else:
                 z = self.backbone(x)
+        if isinstance(z, tuple):
+            z = z[0]
 
         z = nn.functional.normalize(z, dim=-1) if self.cos else z
         z_ = nn.functional.normalize(self.feature_module(z), dim=-1) if self.feature_module is not False else z 

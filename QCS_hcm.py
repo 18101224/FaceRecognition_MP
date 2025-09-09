@@ -96,7 +96,7 @@ class Trainer:
         self.fetcher = ClassBatchSampler(args, transform=get_transform(args,train=True),idx=False)
         self.model,self.aligner = get_model(args)
         self.model = self.model.to(self.device) if self.args.world_size == 1 else DDP(self.model.cuda(),device_ids=[self.args.local_rank],find_unused_parameters=True)
-        self.aligner = self.aligner.to(self.device)
+        self.aligner = self.aligner.to(self.device) if self.aligner is not None else None
         self.opt = SAM(self.model.parameters(),base_optimizer=torch.optim.AdamW,lr=self.args.learning_rate,weight_decay=self.args.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt,gamma=0.98)
         self.guide_network = ImbalancedModel(num_classes=7,model_type='ir50',)
@@ -159,6 +159,8 @@ class Trainer:
             else:
                 if self.aligner is not None:
                     _,_,keypoint,_,_,_ = self.aligner(images)
+                else:
+                    keypoint = None
                 logits = self.model(images, keypoint=keypoint)
                 loss = torch.nn.functional.cross_entropy(logits,labels)
                 return loss, logits
@@ -254,7 +256,8 @@ class Trainer:
             self.log.append(log)
             wandb.log(log)
         
-        dist.barrier()
+        if self.args.world_size> 1: 
+            dist.barrier()
         return train_loss, train_acc, valid_loss, valid_acc
 
     def train(self,):
