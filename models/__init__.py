@@ -169,12 +169,12 @@ class ImbalancedModel(nn.Module):
     def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False,  
     regular_simplex=False, cos=True, learnable_input_dist=False, input_layer = False, freeze_backbone=False):
         global model_dict, dim_dict
-        if model_type not in self.model_dict:
+        if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
         super().__init__()
         # Use model_dict to get the constructor and instantiate the model
-        self.backbone = self.model_dict[model_type]()
-        dim_in, mid_dim, feat_dim = self.dim_dict[model_type]
+        self.backbone = model_dict[model_type]()
+        dim_in, mid_dim, feat_dim = dim_dict[model_type]
 
         if feature_branch : 
             self.head = nn.Sequential(nn.Linear(dim_in, mid_dim), nn.BatchNorm1d(mid_dim), nn.ReLU(inplace=True), nn.Linear(mid_dim, feat_dim))
