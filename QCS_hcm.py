@@ -11,7 +11,7 @@ from opt import SAM
 import torch.distributed as dist
 from torch.distributed import init_process_group
 from datetime import timedelta
-from utils import get_exp_name
+from utils import get_exp_id
 import numpy as np
 from utils import get_acc
 from aligners import get_aligner
@@ -116,7 +116,7 @@ class Trainer:
 
     def init_wandb(self,):
         wandb.login()
-        exp_name = get_exp_name()
+        exp_name = get_exp_id(self.args)
         os.makedirs(f'checkpoint/{exp_name}',exist_ok=True)
         self.save_dir = f'checkpoint/{exp_name}'
         wandb.init(project='QCS_hcm-'+self.args.dataset_name,name=exp_name,config=self.args)
