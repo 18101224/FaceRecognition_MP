@@ -168,6 +168,7 @@ class ImbalancedModel(nn.Module):
 
     def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False,  
     regular_simplex=False, cos=True, learnable_input_dist=False, input_layer = False, freeze_backbone=False):
+        global model_dict, dim_dict
         if model_type not in self.model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
         super().__init__()
