@@ -67,13 +67,13 @@ def get_model(args):
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m') if args.model_type == 'kp_rpe' else None
     if loss == 'CE' :
         return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True,
-         feature_model=args.feature_module, learnable_input_dist=args.learnable_input_dist,
+          learnable_input_dist=args.learnable_input_dist,
          feature_module=args.feature_module, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone), aligner
     elif loss == 'QCS' :
         return get_QCS_model(args.model_type,args.dim,7), aligner
     elif loss == 'HCM' :
         return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True,
-         feature_model=args.feature_module, learnable_input_dist=args.learnable_input_dist,
+          learnable_input_dist=args.learnable_input_dist,
          feature_module=args.feature_module, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone), aligner
     else:
         raise ValueError(f'Invalid loss: {loss}')
