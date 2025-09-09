@@ -20,8 +20,8 @@ def get_aligner(cfg_path):
     if aligner_cfg.start_from:
         aligner.load_state_dict_from_path(aligner_cfg.start_from)
 
-    if aligner_cfg.freeze:
-        for param in aligner.parameters():
-            param.requires_grad = False
+    for param in aligner.parameters():
+        param.requires_grad = False
+    aligner.eval()
     return aligner
 

@@ -1,4 +1,4 @@
-from dataset import get_kfolds, get_loaders
+from dataset import get_kfolds, get_loaders, get_noise_dataset
 from models import make_g_nets
 from argparse import ArgumentParser
 from torch.distributed import init_process_group, barrier
@@ -12,6 +12,7 @@ from datetime import datetime
 import pandas as pd 
 from Loss import cosine_constant_margin_loss
 from functools import partial
+from torch.utils.data import DataLoader, DistributedSampler
 
 def get_exp_id(args):
     now = datetime.now()
@@ -36,10 +37,10 @@ def get_args():
     args.add_argument('--world_size',type=int, default=1)
     args.add_argument('--local_rank',type=int)
     args.add_argument('--rank',type=int)
-
-
+    args.add_argument('--num_workers',type=int, default=16)
+    args.add_argument('--use_tf',default=False)
     #logging
-    args.add_argument('--wandb_token',type=str)
+
     args.add_argument('--server',type=str)
 
     #model config
@@ -60,6 +61,11 @@ def get_args():
         args.batch_size = args.batch_size // args.world_size
         torch.cuda.set_device(args.local_rank)
         torch.cuda.empty_cache()
+    args.server = os.getenv('SERVER')
+    if args.use_tf : 
+        torch.backends.cuda.matmul.allow_tf32 = True 
+        torch.backends.cudnn.allow_tf32 = True 
+        torch.backends.cudnn.benchmark = True 
     return args
 
 def get_optimizer(args):
@@ -89,7 +95,16 @@ class Trainer:
             random_seed=args.random_seed,
         )
         self.train_loaders, self.valid_loaders, self.train_samplers, self.valid_samplers = get_loaders(args,self.train_sets,self.valid_sets,use_ddp=args.world_size>1)
-
+        self.valid_set = get_noise_dataset(args=args, train=False)
+        self.valid_sampler = DistributedSampler(self.valid_set,shuffle=False) if args.world_size > 1 else None
+        self.valid_loader = DataLoader(
+            self.valid_set,
+            batch_size=args.batch_size,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=self.args.num_workers,
+            sampler=self.valid_sampler
+        )
         # init model 
         self.device = torch.device(args.local_rank if args.world_size > 1 else 'cuda')
         
@@ -174,12 +189,12 @@ class Trainer:
                     preds = g_net(img, keypoint)
                 else:
                     preds = g_net(img)
-                loss = self.loss_fn(preds, label, self.args.cos_constant_margin)
+                loss = self.loss_fn(preds, label, self.args.cos_constant_margin if self.args.cos_constant_margin else None)
                 loss.backward()
                 if self.args.dataset_name in ['AffectNet', 'RAF-DB']:
                     opt.first_step(zero_grad=True)
                     preds = g_net(img,keypoint)
-                    loss = self.loss_fn(preds, label, self.args.cos_constant_margin)
+                    loss = self.loss_fn(preds, label, self.args.cos_constant_margin if self.args.cos_constant_margin else None)
                     loss.backward()
                     opt.second_step(zero_grad=True)
                 else : 
@@ -217,7 +232,7 @@ class Trainer:
                     pred = g_net(img,keypoint)
                 else:
                     pred = g_net(img)
-                loss = self.loss_fn(pred, label, self.args.cos_constant_margin)
+                loss = self.loss_fn(pred, label, self.args.cos_constant_margin if self.args.cos_constant_margin else None)
                 bs = label.shape[0]
                 total_loss += loss.detach().cpu().item() * bs
                 total_acc += self.get_acc(pred, label) * bs
@@ -229,9 +244,35 @@ class Trainer:
             losses.append(total_loss/len(valid_loader.dataset))
         return accs, losses
     
+    def run_test_epoch(self,):
+        accs,losses  = [], []
+        for g_net in self.g_nets : 
+            acc, loss = 0, 0
+            for img, label, _ in tqdm(self.valid_loader, desc=f"Testing", disable=(self.args.world_size > 1 and self.args.rank != 0)):
+                img, label = img.to(self.device), label.to(self.device)
+                if self.args.dataset_name in ['AffectNet', 'RAF-DB']:
+                    with torch.no_grad():
+                        _,_,keypoint,_,_,_ = self.aligner(img)
+                    pred = g_net(img,keypoint)
+                else:
+                    pred = g_net(img)
+                temp_loss = torch.nn.functional.cross_entropy(pred,label)
+                bs = label.shape[0]
+                acc += self.get_acc(pred, label) * bs
+                loss += temp_loss.item() * bs
+            if self.args.world_size > 1:
+                acc = self.sync(torch.tensor(acc, device=self.device))
+                loss = self.sync(torch.tensor(loss, device=self.device))
+            accs.append(acc/len(self.valid_loader.dataset))
+            losses.append(loss/len(self.valid_loader.dataset))
+        acc = sum(accs)/len(accs)
+        loss = sum(losses)/len(losses)
+        return acc, loss
+
     def run_epoch(self, epoch):
         train_accs, train_losses = self.run_train_epoch(epoch)
         valid_accs, valid_losses = self.run_valid_epoch(epoch)
+        test_acc, test_loss = self.run_test_epoch()
         train_acc, train_loss = np.mean(train_accs), np.mean(train_losses)
         valid_acc, valid_loss = np.mean(valid_accs), np.mean(valid_losses)
         if self.args.world_size ==1 or self.args.rank ==0:
@@ -247,6 +288,8 @@ class Trainer:
                 'train_loss': train_loss,
                 'valid_acc': valid_acc,
                 'valid_loss': valid_loss,
+                'test_acc': test_acc,
+                'test_loss': test_loss,
                 **logs 
             })
             train_log = train_accs + train_losses 

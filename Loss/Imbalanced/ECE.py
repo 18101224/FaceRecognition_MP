@@ -21,7 +21,7 @@ def weight_scheduling(method, beta, epoch, n_epochs):
         if epoch >= n_epochs:
             return beta
         return beta * (1 - np.cos(np.pi * epoch / (2 * n_epochs)))
-    elif method == 'sigmoid':q  
+    elif method == 'sigmoid':
         if epoch >= n_epochs:
             return beta
         phase = 1.0 - epoch / n_epochs

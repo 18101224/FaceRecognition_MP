@@ -75,7 +75,7 @@ class Trainer:
         self.guide_network.cuda()
         self.id = self.init_wandb()
         self.init_sims()
-    
+        self.log = []
     def init_sims(self):
         # dynamic or static 
         weight = self.guide_network.get_kernel() # dim, num_classes
@@ -190,6 +190,7 @@ class Trainer:
             'best_acc': self.best_acc,
             'epoch': self.epoch
         }
+        self.log.append(log)
         wandb.log(log)
         return train_loss, train_acc, valid_loss, valid_acc
 
