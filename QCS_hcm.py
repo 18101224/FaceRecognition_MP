@@ -98,6 +98,8 @@ class Trainer:
         self.id = None
         if self.args.world_size == 1 or self.args.rank == 0 :
             self.id = self.init_wandb()
+        self.best_acc = 0
+        self.save_dir = f'checkpoint/{self.id}'
         if self.args.world_size > 1:
             obj_list = [self.id if self.args.rank == 0 else None]
             dist.broadcast_object_list(obj_list, src=0)
@@ -125,9 +127,9 @@ class Trainer:
         wandb.login()
         exp_name = get_exp_id(self.args)
         os.makedirs(f'checkpoint/{exp_name}',exist_ok=True)
-        self.save_dir = f'checkpoint/{exp_name}'
+
         wandb.init(project='QCS_hcm-'+self.args.dataset_name,name=exp_name,config=self.args)
-        self.best_acc = 0
+
         return exp_name
 
     def run_train_forward(self, images, labels):
