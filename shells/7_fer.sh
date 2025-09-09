@@ -10,4 +10,4 @@ CUDA_VISIBLE_DEVICES=0 python3 QCS_hcm.py \
   --n_epochs=200 \
   --learning_rate=1e-4 \
   --use_sampler=True \
-  --model_type=ir50 --use_hcm=True 
+  --model_type=kp_rpe --loss=HCM --cl_weight=0.3 
