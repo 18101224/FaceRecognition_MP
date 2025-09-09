@@ -8,4 +8,4 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 QCS_hcm.py--world_size=2  \
   --n_epochs=200 \
   --learning_rate=1e-5 \
   --use_sampler=True \
-  --model_type=kp_rpe --loss=HCM --cl_weight=0.3 
+  --model_type=kp_rpe --loss=CE --cl_weight=0.3 
