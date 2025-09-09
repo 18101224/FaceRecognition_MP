@@ -94,7 +94,14 @@ class Trainer:
         self.guide_network = ImbalancedModel(num_classes=7,model_type='ir50',)
         self.guide_network.load_state_dict(torch.load(f'{self.args.guide_path}/latest.pth',weights_only=False)['model_state_dict'])
         self.guide_network.cuda()
-        self.id = self.init_wandb()
+        # Initialize wandb only on rank 0, then broadcast run id to all ranks
+        self.id = None
+        if self.args.world_size == 1 or self.args.rank == 0 :
+            self.id = self.init_wandb()
+        if self.args.world_size > 1:
+            obj_list = [self.id if self.args.rank == 0 else None]
+            dist.broadcast_object_list(obj_list, src=0)
+            self.id = obj_list[0]
         self.init_sims()
         self.log = []
         self.hcm = HCM(args=args,train_set=self.train_set)
@@ -130,7 +137,6 @@ class Trainer:
             loss, outputs = self.hcm(images, labels, self.fetcher, self.model, self.aligner)
             return loss, outputs
         else:
-
             if self.args.use_hcm : 
                 positive, y_p = self.fetcher.sample_pairs(labels,k=1,num_workers=self.args.num_workers)
                 hard_neg, y_n1 = self.fetcher.sample_pairs(self.bank[labels,0],k=self.args.k,num_workers=self.args.num_workers)
@@ -141,7 +147,9 @@ class Trainer:
                 loss = torch.nn.functional.cross_entropy(outputs,label)
                 return loss, outputs[:images.shape[0]]
             else:
-                logits = self.model(images)
+                if self.aligner is not None:
+                    _,_,keypoint,_,_,_ = self.aligner(images)
+                logits = self.model(images, keypoint=keypoint)
                 loss = torch.nn.functional.cross_entropy(logits,labels)
                 return loss, logits
 
@@ -152,7 +160,7 @@ class Trainer:
         labels = labels.to(self.device)
         if self.aligner is not None:
             _,_,keypoint,_,_,_ = self.aligner(images)
-        logits = self.model(images) if self.aligner is None else self.model(images, keypoint=keypoint)
+        logits = self.model(images, keypoint=keypoint) if self.aligner is not None else self.model(images)
         loss = torch.nn.functional.cross_entropy(logits,labels)
         return loss, logits
     
@@ -168,12 +176,15 @@ class Trainer:
             loss.backward()
             self.opt.second_step(zero_grad=True)
             with torch.no_grad():
-                total_loss += loss.detach().cpu().item()*(labels.shape[0])
-                total_acc += get_acc(outputs.cpu(), labels)*labels.shape[0]
-        
+                total_loss += loss*(labels.shape[0])
+                total_acc += get_acc(outputs, labels.to(self.device))*labels.shape[0]
         if self.args.world_size > 1 :
-            total_loss = dist.all_reduce(torch.tensor([total_loss]),op=dist.ReduceOp.SUM).item()
-            total_acc = dist.all_reduce(torch.tensor([total_acc]),op=dist.ReduceOp.SUM).item()
+            tl = torch.tensor([total_loss], device=self.device, dtype=torch.float32)
+            ta = torch.tensor([total_acc], device=self.device, dtype=torch.float32)
+            dist.all_reduce(tl, op=dist.ReduceOp.SUM)
+            dist.all_reduce(ta, op=dist.ReduceOp.SUM)
+            total_loss = tl.item()
+            total_acc = ta.item()
         
         total_loss = total_loss/len(self.train_set)
         total_acc = total_acc/len(self.train_set)
@@ -189,8 +200,12 @@ class Trainer:
             total_loss += loss.detach().cpu().item()*(labels.shape[0])
             total_acc += get_acc(outputs.cpu(), labels)*labels.shape[0]
         if self.args.world_size > 1 :
-            total_loss = dist.all_reduce(torch.tensor([total_loss]),op=dist.ReduceOp.SUM).item()
-            total_acc = dist.all_reduce(torch.tensor([total_acc]),op=dist.ReduceOp.SUM).item()
+            tl = torch.tensor([total_loss], device=self.device, dtype=torch.float32)
+            ta = torch.tensor([total_acc], device=self.device, dtype=torch.float32)
+            dist.all_reduce(tl, op=dist.ReduceOp.SUM)
+            dist.all_reduce(ta, op=dist.ReduceOp.SUM)
+            total_loss = tl.item()
+            total_acc = ta.item()
         total_loss = total_loss/len(self.valid_set)
         total_acc = total_acc/len(self.valid_set)
         return total_loss, total_acc
@@ -222,8 +237,11 @@ class Trainer:
             'best_acc': self.best_acc,
             'epoch': self.epoch
         }
-        self.log.append(log)
-        wandb.log(log)
+        if self.args.world_size == 1 or self.args.rank == 0 :
+            self.log.append(log)
+            wandb.log(log)
+        
+        dist.barrier()
         return train_loss, train_acc, valid_loss, valid_acc
 
     def train(self,):
