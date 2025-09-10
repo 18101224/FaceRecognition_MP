@@ -1,80 +1,63 @@
-import re
-from pathlib import Path
-
+import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import pandas as pd
-
-
-def parse_depth(feature_module_value: str) -> int:
-    value = str(feature_module_value).strip().lower()
-    if value in {"false", "none", "", "nan"}:
-        return 0
-    match = re.match(r"residual_(\d+)", value)
-    if match:
-        return int(match.group(1))
-    return 0
-
-
-def map_mode_from_freeze_backbone(freeze_value: str) -> str:
-    # Adjusted: freeze_backbone == False => Fine-tuning (FT); True => Probing
-    value = str(freeze_value).strip().lower()
-    return "FT" if value == "false" else "Probing"
+from pathlib import Path
 
 
 def main() -> None:
-    project_root = Path(__file__).resolve().parent
-    csv_path = project_root / "raf-db.csv"
-    output_dir = project_root / "results"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "raf_ft_vs_probe.png"
+    root = Path(__file__).resolve().parent
+    out_dir = root / "results"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(root / "result.csv")
 
-    # Ensure numeric type for best_acc
-    df["best_acc"] = pd.to_numeric(df.get("best_acc"), errors="coerce")
+    # X axis: epoch if present, else use row index
+    if "epoch" in df.columns:
+        x = df["epoch"].values
+    else:
+        x = df.index.values
 
-    # Compute depth from feature_module
-    df["depth"] = df.get("feature_module").apply(parse_depth)
+    # ----- Figure 1: gradients -----
+    fig1, ax1 = plt.subplots(figsize=(8, 4.8), dpi=150)
+    if "backbone_grads" in df.columns:
+        ax1.plot(x, df["backbone_grads"].values, label="backbone_grads", color="tab:blue", linewidth=2)
+    if "weight_grads" in df.columns:
+        ax1.plot(x, df["weight_grads"].values, label="weight_grads", color="tab:orange", linewidth=2)
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Gradient magnitude")
+    ax1.set_title("Gradients over epochs")
+    ax1.grid(True, linestyle="--", alpha=0.4)
+    ax1.legend()
+    fig1.tight_layout()
+    fig1.savefig(out_dir / "grads.png")
 
-    # Determine mode from freeze_backbone
-    df["mode"] = df.get("freeze_backbone").apply(map_mode_from_freeze_backbone)
+    # ----- Figure 2: train_loss and its difference -----
+    if "train_loss" in df.columns:
+        train_loss = df["train_loss"].astype(float)
+        diff = train_loss.diff().fillna(0.0)
 
-    # Aggregate: for each (mode, depth), pick max best_acc (handles multiple LRs)
-    grouped = (
-        df.dropna(subset=["best_acc"]).groupby(["mode", "depth"], as_index=False)["best_acc"].max()
-    )
+        fig2, ax2 = plt.subplots(figsize=(8, 4.8), dpi=150)
+        ax2.plot(x, train_loss.values, label="train_loss", color="tab:green", linewidth=2)
+        ax2.set_xlabel("Epoch")
+        ax2.set_ylabel("Train loss", color="tab:green")
+        ax2.tick_params(axis='y', labelcolor='tab:green')
+        ax2.grid(True, linestyle="--", alpha=0.4)
 
-    # Pivot to have columns per mode for easy plotting
-    pivot = grouped.pivot(index="depth", columns="mode", values="best_acc").sort_index()
+        ax2b = ax2.twinx()
+        ax2b.plot(x, diff.values, label="diff(train_loss)", color="tab:red", linewidth=1.8)
+        ax2b.set_ylabel("Loss difference", color="tab:red")
+        ax2b.tick_params(axis='y', labelcolor='tab:red')
 
-    fig, ax = plt.subplots(figsize=(7, 4.5), dpi=150)
+        # Build a combined legend
+        lines = ax2.get_lines() + ax2b.get_lines()
+        labels = [l.get_label() for l in lines]
+        ax2.legend(lines, labels, loc="best")
 
-    plotted_any = False
-    for mode_name, style in [("FT", {"color": "tab:blue", "marker": "o"}), ("Probing", {"color": "tab:orange", "marker": "s"})]:
-        if mode_name in pivot.columns:
-            ax.plot(
-                pivot.index.values,
-                pivot[mode_name].values,
-                label=mode_name,
-                linewidth=2,
-                markersize=6,
-                **style,
-            )
-            plotted_any = True
-
-    ax.set_xlabel("Feature module depth")
-    ax.set_ylabel("Best accuracy")
-    ax.set_title("RAF-DB: FT vs Probing by depth (max over LRs)")
-    ax.grid(True, linestyle="--", alpha=0.4)
-    if plotted_any:
-        ax.legend()
-
-    fig.tight_layout()
-    fig.savefig(output_path)
+        fig2.tight_layout()
+        fig2.savefig(out_dir / "train_loss_and_diff.png")
 
 
 if __name__ == "__main__":
     main()
-    plt.show()
+    
