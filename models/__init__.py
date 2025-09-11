@@ -1,4 +1,5 @@
 from .modules import Backbone as ir50_backbone
+from .modules import Parital_Backbone 
 from .modules import DeepComplexModule, ResidualModule
 from .modules import resnet32_backbone, resnet50_backbone, resnext50_backbone
 from .modules import e2_resnet32, e2_resnext50
@@ -26,7 +27,10 @@ model_dict = {
     'ir50': partial(ir50_backbone, checkpoint_path='checkpoint/ir50.pth'),
     'e2_resnet32': e2_resnet32,
     'e2_resnext50': e2_resnext50,
-    'kp_rpe': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m')
+    'kp_rpe': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m'),
+    **{
+        f'ir50_{i}': partial(Parital_Backbone, checkpoint_path='checkpoint/ir50.pth', to_What=i) for i in range(1,4)
+    }
 }
 dim_dict = {
     'resnet32_64d': (64, 512, 128),
@@ -36,7 +40,10 @@ dim_dict = {
     'ir50': (256, 512, 128),
     'e2_resnet32': (256, 256, 128),
     'e2_resnext50': (2048, 2048, 1024),
-    'kp_rpe': (512, 1024, 256)
+    'kp_rpe': (512, 1024, 256), 
+    **{
+        f'ir50_{i}': (dim_in, mid_dim, feat_dim) for i, dim_in, mid_dim, feat_dim in zip(list(range(1,4)), [64,128,256], [128,512,256], [256,1048,512])
+    }
 }
 
 if False : 
@@ -168,15 +175,20 @@ class ImbalancedModel(nn.Module):
     # The model_dict dictionary maps model type strings to their corresponding constructor functions.
     # You can use it to dynamically select and instantiate a model based on a string key.
 
-    def __init__(self, num_classes, model_type: str, feature_branch=True, feature_module=False,  
-    regular_simplex=False, cos=True, learnable_input_dist=False, input_layer = False, freeze_backbone=False):
+    def __init__(self, num_classes, model_type: str, feature_branch=False, feature_module=False,  
+    regular_simplex=False, cos=True, learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False):
         global model_dict, dim_dict
         if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
         super().__init__()
         # Use model_dict to get the constructor and instantiate the model
-        self.backbone = model_dict[model_type]()
-        dim_in, mid_dim, feat_dim = dim_dict[model_type]
+        if model_type in ['ir50_1', 'ir50_2', 'ir50_3']:
+            self.backbone = model_dict[model_type](remain_backbone=remain_backbone)
+            dim_in, mid_dim, feat_dim = dim_dict['ir50'] if remain_backbone else dim_dict[model_type]
+            print(f'remain : {remain_backbone} {model_type} dim : {dim_in}, {mid_dim}, {feat_dim}')
+        else:
+            self.backbone = model_dict[model_type]()
+            dim_in, mid_dim, feat_dim = dim_dict[model_type]
 
         if feature_branch : 
             self.head = nn.Sequential(nn.Linear(dim_in, mid_dim), nn.BatchNorm1d(mid_dim), nn.ReLU(inplace=True), nn.Linear(mid_dim, feat_dim))

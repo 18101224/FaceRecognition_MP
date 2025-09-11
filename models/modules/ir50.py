@@ -139,6 +139,12 @@ def get_blocks(num_layers):
         ]
     return blocks1, blocks2, blocks3
 
+def get_ir_module(to_What):
+    if to_What > 3 :
+        raise ValueError('to_What should be less than 3')
+    ir = Backbone('checkpoint/ir50.pth')
+
+
 
 class Backbone(Module):
     def __init__(self, checkpoint_path):
@@ -205,3 +211,36 @@ class Backbone(Module):
         x = F.adaptive_avg_pool2d(x3, 1).reshape(x.shape[0],-1)
         return x, [x1,x2,x3]
 
+
+class Parital_Backbone(Backbone):
+    def __init__(self, checkpoint_path, to_What, remain_backbone = False):
+        super(Parital_Backbone, self).__init__(checkpoint_path)
+        to_delete = [1,2,3][to_What:] if not remain_backbone else []
+        for name in to_delete:
+            if hasattr(self,f'body{name}'):
+                delattr(self,f'body{name}')
+                print(f'remain : {remain_backbone} body{name} deleted')
+        self.remain = remain_backbone 
+        self.to_what = to_What if not remain_backbone else 3
+
+    def freeze(self):
+        for p in list(self.input_layer.parameters()) + list(self.output_layer.parameters()):
+            p.requires_grad = False 
+
+        modules = [self.body1, self.body2, self.body3]
+        for p in modules[self.to_what:]:
+            p.requires_grad = True 
+        for p in modules[:self.to_what]:
+            p.requires_grad = False 
+        
+        
+    def forward(self, x):
+        features = []
+        x = F.interpolate(x, size=112)
+        x = self.input_layer(x)
+        for layer_idx in range(1,self.to_what+1):
+            layer = getattr(self,f'body{layer_idx}')
+            x = layer(x)
+            features.append(x)
+        x = F.adaptive_avg_pool2d(x, 1).reshape(x.shape[0],-1)
+        return x, features

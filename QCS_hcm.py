@@ -13,38 +13,57 @@ from torch.distributed import init_process_group
 from datetime import timedelta
 from utils import get_exp_id
 import numpy as np
-from utils import get_acc
+from utils import get_acc, get_grads
 from aligners import get_aligner
 from Loss import HCM
+from collections import defaultdict
+from utils import calculate_class_centers, slerp_ema  
 
 
 def get_args():
     args = ArgumentParser()
+    # ddp & opt args 
     args.add_argument('--world_size',type=int,default=1)
     args.add_argument('--local_rank',type=int,default=None)
     args.add_argument('--rank',type=int,default=None)
+    args.add_argument('--num_workers',type=int,default=0)
+    args.add_argument('--use_tf',default=False)
+    args.add_argument('--pin_memory', default=False)
+
+    # training hyperparams
     args.add_argument('--batch_size',type=int,default=128)
     args.add_argument('--n_epochs',type=int,default=200)
     args.add_argument('--learning_rate',type=float,default=0.0001)
     args.add_argument('--weight_decay',type=float,default=1e-4)
     args.add_argument('--dim',type=int,default=768)
+
+    # loss params 
+    args.add_argument('--use_hcm', default=False)
+    args.add_argument('--loss', type=str, choices=['CE','QCS','HCM'])
+    args.add_argument('--cl_weight',type=float,default=0.3)
+    args.add_argument('--classification', default=False)
     args.add_argument('--guide_path',)
+    args.add_argument('--use_mean', default=False)
+
+    # model params 
     args.add_argument('--dataset_path',)
     args.add_argument('--model_type',type=str,default='ir50')
     args.add_argument('--dataset_name',type=str,default='RAF-DB')
     args.add_argument('--k',type=int,default=2)
     args.add_argument('--use_sampler',default=False)
-    args.add_argument('--num_workers',type=int,default=0)
-    args.add_argument('--use_tf',default=False)
-    args.add_argument('--pin_memory', default=False)
-    args.add_argument('--use_hcm', default=False)
-    args.add_argument('--loss', type=str, choices=['CE','QCS','HCM'])
-    args.add_argument('--cl_weight',type=float,default=0.3)
-    args.add_argument('--classification', default=False)
     args.add_argument('--learnable_input_dist', default=False)
     args.add_argument('--input_layer', default=False)
     args.add_argument('--freeze_backbone', default=False)
+    args.add_argument('--remain_backbone', default=False)
+    args.add_argument('--feature_branch', default=False)
     args.add_argument('--feature_module', default=False)
+    args.add_argument('--use_class_center', default=False)
+    args.add_argument('--use_target_center', default=False)
+    args.add_argument('--backbone_layers', type=int, default=3)
+
+    # log params
+    args.add_argument('--measure_grad', default=False)
+
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
     if args.world_size > 1 :
@@ -60,21 +79,22 @@ def get_args():
         torch.backends.cuda.matmul.allow_tf32 = True 
         torch.backends.cudnn.allow_tf32 = True 
         torch.backends.cudnn.benchmark = True 
+    print(args.feature_module)
     return args
 
 def get_model(args):
     loss = getattr(args,'loss','CE')
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m') if args.model_type == 'kp_rpe' else None
     if loss == 'CE' :
-        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True,
+        return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=args.feature_branch,
           learnable_input_dist=args.learnable_input_dist,
-         feature_module=args.feature_module, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone), aligner
+         feature_module=args.feature_module, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone, remain_backbone=args.remain_backbone), aligner
     elif loss == 'QCS' :
         return get_QCS_model(args.model_type,args.dim,7), aligner
     elif loss == 'HCM' :
         return ImbalancedModel(num_classes=7, model_type=args.model_type, cos=True, feature_branch=True,
           learnable_input_dist=args.learnable_input_dist,
-         feature_module=args.feature_module, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone), aligner
+         feature_module=args.feature_module, input_layer=args.input_layer, freeze_backbone=args.freeze_backbone, remain_backbone=args.remain_backbone), aligner
     else:
         raise ValueError(f'Invalid loss: {loss}')
 
@@ -99,7 +119,7 @@ class Trainer:
         self.aligner = self.aligner.to(self.device) if self.aligner is not None else None
         self.opt = SAM(self.model.parameters(),base_optimizer=torch.optim.AdamW,lr=self.args.learning_rate,weight_decay=self.args.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt,gamma=0.98)
-        self.guide_network = ImbalancedModel(num_classes=7,model_type='ir50',)
+        self.guide_network = ImbalancedModel(num_classes=7,model_type='ir50',feature_branch=True)
         self.guide_network.load_state_dict(torch.load(f'{self.args.guide_path}/latest.pth',weights_only=False)['model_state_dict'])
         self.guide_network.cuda()
         # Initialize wandb only on rank 0, then broadcast run id to all ranks
@@ -115,6 +135,19 @@ class Trainer:
         self.init_sims()
         self.log = []
         self.hcm = HCM(args=args,train_set=self.train_set)
+        self.grads = []
+
+        #self.class_centers = calculate_class_centers(self.train_loader, self.model, self.device, use_gradient=self.args.use_mean)
+    
+    def init_grads(self,):
+        if not self.args.freeze_backbone:
+            self.backbone_grads = []
+        if not self.args.feature_module:
+            self.feature_module_grads = []
+        if not self.args.feature_branch:
+            self.head_grads = []
+            self.head_fc_grads = []
+        self.weight_grads = []
 
     def init_sims(self):
         # dynamic or static 
@@ -165,6 +198,30 @@ class Trainer:
                 loss = torch.nn.functional.cross_entropy(logits,labels)
                 return loss, logits
 
+    @torch.no_grad()
+    def measure_gradient_norms(self,bs, grads):
+        m = self.model.module if self.args.world_size > 1 else self.model
+        for module in ['backbone', 'feature_module', 'head', 'head_fc', 'weight']:
+            grad = get_grads(getattr(m,module,False)) 
+            if grad is not None : 
+                grad = grad*bs
+                if self.args.world_size > 1 :
+                    dist.barrier()
+                    dist.all_reduce(grad, op=dist.ReduceOp.SUM)
+                grads[module+'_grads'].append(grad.item())
+            if module == 'backbone':
+                backbone = getattr(m,'backbone',None)
+                if backbone is not None : 
+                    for block in [f'body{i}' for i in range(1,4)]:
+                        grad = get_grads(getattr(backbone,block,False))
+                        if grad is not None : 
+                            grad = grad*bs
+                            if self.args.world_size > 1 :
+                                dist.barrier()
+    
+        return grads
+        
+        
 
     @torch.no_grad()
     def run_valid_forward(self, images, labels):
@@ -181,14 +238,21 @@ class Trainer:
         if self.args.freeze_backbone :
             to_freeze = self.model.module if self.args.world_size > 1 else self.model
             to_freeze.freeze_backbone()
+        if self.args.remain_backbone :
+            to_freeze = self.model.module.backbone if self.args.world_size > 1 else self.model.backbone
+            to_freeze.freeze()
         total_loss = 0
         total_acc = 0
+        grads = defaultdict(list)
         for images, labels in tqdm(self.train_loader, disable=self.args.world_size > 1 and self.args.rank != 0):
+            bs = labels.shape[0]
             loss, outputs = self.run_train_forward(images[0], labels)
             loss.backward()
             self.opt.first_step(zero_grad=True)
             loss, outputs = self.run_train_forward(images[0], labels)
-            loss.backward()
+            loss.backward(retain_graph=bool(self.args.measure_grad))
+            if self.args.measure_grad :
+                grads = self.measure_gradient_norms(bs, grads)
             self.opt.second_step(zero_grad=True)
             with torch.no_grad():
                 total_loss += loss*(labels.shape[0])
@@ -200,10 +264,12 @@ class Trainer:
             dist.all_reduce(ta, op=dist.ReduceOp.SUM)
             total_loss = tl.item()
             total_acc = ta.item()
-        
-        total_loss = total_loss/len(self.train_set)
-        total_acc = total_acc/len(self.train_set)
 
+        total_loss = (total_loss/len(self.train_set)).cpu()
+        total_acc = total_acc/len(self.train_set)
+        for k, v in grads.items():
+            grads[k] = sum(v)/len(self.train_set)
+        self.grads.append(grads)
         return total_loss, total_acc
 
     def valid_epoch(self,):
@@ -250,8 +316,10 @@ class Trainer:
             'valid_loss': valid_loss,
             'valid_acc': valid_acc,
             'best_acc': self.best_acc,
-            'epoch': self.epoch
+            'epoch': self.epoch,
+            **self.grads[-1]
         }
+
         if self.args.world_size == 1 or self.args.rank == 0 :
             self.log.append(log)
             wandb.log(log)
@@ -260,7 +328,6 @@ class Trainer:
         if self.args.world_size> 1: 
             dist.barrier()
 
-        
         return train_loss, train_acc, valid_loss, valid_acc
 
     def train(self,):

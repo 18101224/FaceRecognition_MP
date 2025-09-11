@@ -13,8 +13,53 @@ from .confusion import *
 from .eval_quality import *
 from .pushover import send_message
 from .epx_log import get_exp_id
+from .interpolation import calculate_class_centers, slerp_ema
 
-__all__ = ['get_acc', 'get_macro_acc', 'get_norm', 'get_pd', 'save_pd', 'save_pkl', 'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload']
+__all__ = ['get_acc', 'get_macro_acc', 'get_norm', 'get_pd', 'save_pd', 'save_pkl', 
+'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload', 'get_grads', 'calculate_class_centers', 'slerp_ema']
+
+def get_grads(obj):
+    """
+    Compute L2 norm of gradients for either a torch.nn.Module or a torch.nn.Parameter.
+
+    Returns a 0-dim torch.Tensor on the correct device, or None if no grads.
+    """
+    # Handle None/bool sentinels
+    if obj is None or isinstance(obj, bool):
+        return None
+
+    # Single parameter
+    if isinstance(obj, torch.nn.Parameter):
+        if obj.grad is None:
+            return None
+        return obj.grad.norm()
+
+    # Module: iterate parameters
+    if isinstance(obj, torch.nn.Module):
+        grads = [p.grad for p in obj.parameters() if p.grad is not None]
+        if not grads:
+            return None
+        device = grads[0].device
+        dtype = grads[0].dtype
+        total_sq = torch.tensor(0.0, device=device, dtype=dtype)
+        for g in grads:
+            total_sq = total_sq + g.norm().pow(2)
+        return total_sq.sqrt()
+
+    # Iterable of parameters (fallback)
+    if isinstance(obj, (list, tuple)):
+        grads = [p.grad for p in obj if isinstance(p, torch.nn.Parameter) and p.grad is not None]
+        if not grads:
+            return None
+        device = grads[0].device
+        dtype = grads[0].dtype
+        total_sq = torch.tensor(0.0, device=device, dtype=dtype)
+        for g in grads:
+            total_sq = total_sq + g.norm().pow(2)
+        return total_sq.sqrt()
+
+    # Unknown type
+    return None
 
 def get_acc(x,y):
     '''

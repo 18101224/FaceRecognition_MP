@@ -1,4 +1,4 @@
-EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/ --exclude=repos/ --exclude=.gits/ --exclude=wandb/ --exclude=.git/"
+EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/ --exclude=repos/ --exclude=.gits/ --exclude=wandb/ --exclude=.venv/ --exclude=.git/"
 SOURCE_DIR="."
 
 SERVERS=(
