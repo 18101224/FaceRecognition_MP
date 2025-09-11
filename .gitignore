@@ -5,3 +5,5 @@
 checkpoint/
 results/
 repos/ 
+.venv/
+InstantID/
