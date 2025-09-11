@@ -19,4 +19,4 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 
 python3 QCS_hcm.py --learning_rate=1e-5 --batch_size=128 --n_epochs=200 --world_size=1 --num_workers=32 \
  --use_tf=True --pin_memory=True --loss=CE --dataset_path=../data/RAF-DB_balanced --dataset_name=RAF-DB --model_type=kp_rpe \
- --use_sampler=True --learnable_input_dist=True --feature_module=residual_3 
+ --use_sampler=True --learnable_input_dist=True --feature_module=residual_3 --guide_path=checkpoint/pme3c5fe43-a9ec-4a37-8ea4-f11268a0ec6e
