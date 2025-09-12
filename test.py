@@ -1,16 +1,37 @@
-import pandas as pd
-import os, shutil 
+from aligners import get_aligner 
+from PIL import Image 
+from torchvision import transforms 
+from dataset import get_transform 
+from argparse import Namespace
+import torch 
+import cv2
+import numpy as np
+device = torch.device('cuda')
+aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').to(device)
 
-df = pd.read_csv('score_board_200.csv')
-source_root = '/Users/seominjae/data/RAF-DB_aligned/valid'
-target_root = '/Users/seominjae/data/RAF-DB_aligned/valid_balanced'
-for i in range(7):
-    temp = df[df['label'] == i]
-    temp_target_root = os.path.join(target_root,str(i+1))
-    os.makedirs(temp_target_root, exist_ok=True)
-    for row in temp.iterrows():
-        file_name = row[1]['ImageName']
-        file_name = file_name.replace('test', 'valid')
-        source_file = os.path.join(source_root,str(i+1),file_name)
-        target_file = os.path.join(temp_target_root,file_name)
-        shutil.copy(source_file,target_file)
+args = {
+    'dataset_name': 'RAF-DB', 'model_type': 'kprpe'
+}
+args = Namespace(**args)
+transform = get_transform(args, train=False)
+img = Image.open('Profile.png')
+if img.mode != 'RGB':
+    img = img.convert('RGB')
+img = transform(img)
+img = img.unsqueeze(0).to(device)
+
+_,_,ldmk,_,_,_ = aligner(img)
+print(ldmk)
+
+ldmk = ldmk.squeeze(0).cpu().numpy()
+
+c, h, w = img[0].shape
+img = ((img*0.5)+0.5)*255
+img = img[0].detach().cpu().numpy().transpose(1,2,0).astype(np.uint8)
+print(img.dtype)
+print(img.shape)
+print(type(img))
+img = np.ascontiguousarray(img)
+for y,x in ldmk : 
+    cv2.circle(img, (int(x * w), int(y * h)), 1, (0, 0, 255), 4)
+cv2.imwrite('test.jpg', img)
