@@ -184,9 +184,9 @@ class Trainer:
             total_acc += get_acc(logits, label.cuda()) * bs
         
         if self.args.world_size > 1 :
-            total_ce_loss = sync_scalar(torch.tensor(total_ce_loss, device=self.device))
-            total_fr_loss = sync_scalar(torch.tensor(total_fr_loss, device=self.device))
-            total_acc = sync_scalar(torch.tensor(total_acc, device=self.device))
+            total_ce_loss = sync_scalar(torch.tensor(total_ce_loss, device=torch.device('cuda')))
+            total_fr_loss = sync_scalar(torch.tensor(total_fr_loss, device=torch.device('cuda')))
+            total_acc = sync_scalar(torch.tensor(total_acc, device=torch.device('cuda')))
         return total_ce_loss / len(self.train_loader.dataset), total_fr_loss / len(self.train_loader.dataset), total_acc / len(self.train_loader.dataset)
     
     def run_valid_epoch(self):
@@ -199,8 +199,8 @@ class Trainer:
             total_loss += loss.detach().item() * bs
             total_acc += get_acc(logits, label.cuda()) * bs
         if self.args.world_size > 1 :
-            total_loss = sync_scalar(torch.tensor(total_loss, device=self.device))
-            total_acc = sync_scalar(torch.tensor(total_acc, device=self.device))
+            total_loss = sync_scalar(torch.tensor(total_loss, device=torch.device('cuda')))
+            total_acc = sync_scalar(torch.tensor(total_acc, device=torch.device('cuda')))
         return total_loss / len(self.valid_loader.dataset), total_acc / len(self.valid_loader.dataset)
 
 

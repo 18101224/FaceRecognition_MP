@@ -275,8 +275,8 @@ class ImbalancedModel(nn.Module):
 
         if getattr(self, 'decomposition', None) is not None:
             z1, z2 = self.decomposition(z_)
-            z1 = nn.functional.normalize(z1, dim=-1,)
-            z2 = nn.functional.normalize(z2, dim=-1,)
+            z1 = nn.functional.normalize(z1, dim=-1)
+            z2 = nn.functional.normalize(z2, dim=-1)
             logit = z1 @ self.get_kernel()
             return logit, z1, z2 if features else logit 
 
