@@ -236,6 +236,7 @@ class ImbalancedModel(nn.Module):
         self.freeze = freeze_backbone
 
         self.decomposition = OrthogonalDecomposer(dim_in) if decomposition else None
+
     def freeze_backbone(self):
         for p in self.backbone.parameters():
             p.requires_grad = False
@@ -265,6 +266,7 @@ class ImbalancedModel(nn.Module):
                 z = self.backbone(x, keypoint) 
             else:
                 z = self.backbone(x)
+        
         if isinstance(z, tuple):
             z = z[0]
 
@@ -278,7 +280,10 @@ class ImbalancedModel(nn.Module):
             z1 = nn.functional.normalize(z1, dim=-1)
             z2 = nn.functional.normalize(z2, dim=-1)
             logit = z1 @ self.get_kernel()
-            return logit, z1, z2 if features else logit 
+            if features :
+                return logit, z1, z2
+            else:  
+                return logit
 
         
         weight = self.get_kernel() # dim, num_classes

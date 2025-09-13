@@ -156,12 +156,13 @@ class Trainer:
         ce_loss = torch.nn.functional.cross_entropy(logits,label)
         fr_loss = compute_adv_loss(anchor_fr_features, neg_fr_features)
         return ce_loss, fr_loss, logits 
-
+    
+    @torch.no_grad()
     def run_valid_forward(self, img, label):
         img = img.cuda()
         label = label.cuda()
         ldmk = get_ldmk(img, self.aligner) if (self.aligner is not None and self.args.model_type == 'kp_rpe') else None
-        logits = self.model(img, keypoint=ldmk) 
+        logits = self.model(img, keypoint=ldmk, features=False)
         loss = torch.nn.functional.cross_entropy(logits,label)
         return loss, logits 
     
@@ -189,6 +190,7 @@ class Trainer:
             total_acc = sync_scalar(torch.tensor(total_acc, device=torch.device('cuda')))
         return total_ce_loss / len(self.train_loader.dataset), total_fr_loss / len(self.train_loader.dataset), total_acc / len(self.train_loader.dataset)
     
+
     def run_valid_epoch(self):
         self.model.eval()
         total_loss = 0 
