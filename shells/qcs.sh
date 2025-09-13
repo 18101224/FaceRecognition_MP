@@ -1,17 +1,17 @@
 #!/bin/bash
 #SBATCH -J hcir_qcs
 #SBATCH -A m1248_g 
-#SBATCH -q regular
+#SBATCH -q shared
 #SBATCH -N 1
 #SBATCH -t 12:00:00
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 #SBATCH --mail-user=alswo01287@naver.com
 #SBATCH --mail-type=ALL
-#SBATCH -C gpu
+#SBATCH -C gpu&hbm80g
 
 
 source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
@@ -19,18 +19,8 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 
 
 # Launch a single 4-GPU experiment with torchrun
-torchrun \
-  --nproc_per_node=4 \
-  --master_port=${MASTER_PORT:-29501} \
-  QCS_hcm.py \
-    --dataset_path=../data/RAF-DB_balanced \
-    --dataset_name=RAF-DB \
-    --guide_path=checkpoint/pme3c5fe43-a9ec-4a37-8ea4-f11268a0ec6e \
-    --num_workers=32 \
-    --world_size=4 \
-    --batch_size=64 \
-    --n_epochs=200 \
-    --learning_rate=1e-5 \
-    --use_sampler=True --use_tf=True \
-    --model_type=kp_rpe --pin_memory=True --loss=HCM --cl_weight=0.3
-
+python3 adv_training.py --world_size=1 \
+    --dataset_name='RAF-DB' --dataset_path='../data/RAF-DB_balanced' \
+    --id_strategy=masking --n_blocks=96 --detach_lowlevel=True --beta=0.3 --partial_update=True \
+    --learning_rate=1e-5 --batch_size=128 --n_epochs=200 --use_tf=True --use_sampler=True \
+    --model_type=ir50
