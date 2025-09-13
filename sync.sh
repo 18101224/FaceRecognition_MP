@@ -1,4 +1,7 @@
-EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/ --exclude=repos/ --exclude=.gits/ --exclude=wandb/ --exclude=.venv/ --exclude=.git/"
+EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/  \
+ --exclude=repos/ --exclude=.gits/ --exclude=wandb/ --exclude=.venv/ --exclude=.git/ \
+ --exclude=InstantID/checkpoints/ --exclude=InstantID/models/ --exclude=ConsistentID/SG161222/ --exclude=ConsistentID/JackAILab/ \
+ --exclude=ConsistentID/laion/ --exclude=ConsistentID/JackAILab/"
 SOURCE_DIR="."
 
 SERVERS=(

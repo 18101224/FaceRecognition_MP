@@ -5,7 +5,7 @@ import numpy as np
 from .augmentations import ImageNetPolicy, CIFAR10Policy, Cutout, GaussianBlur
 from PIL import ImageFilter
 
-__all__ = ['get_transform', 'get_imagenet_transforms']
+__all__ = ['get_transform', 'get_imagenet_transforms', 'random_masking', 'point_block_mask']
 
 cifar10_mean = (0.4914, 0.4822, 0.4465)
 cifar10_std = (0.2023, 0.1994, 0.2010)
@@ -228,7 +228,7 @@ def get_clothing1m_transforms(train):
             transforms.Normalize(mean=mean, std=std)
         ])
 
-def get_fer_transforms(train):
+def get_fer_transforms(train,):
     if train :
         return transforms.Compose([
             transforms.Resize((112, 112)),
@@ -245,3 +245,84 @@ def get_fer_transforms(train):
             transforms.ToTensor(),
             transforms.Normalize([0.5] * 3, [0.5] * 3)
         ])
+
+def gaussian_prob(distance, sigma=1.5):
+    return np.exp(-0.5*(distance/sigma)**2)
+
+
+@torch.no_grad()
+def random_masking(bs, img_size, block_size, n_blocks, device):
+    """
+    Generate a random block mask on a coarse grid.
+
+    Args:
+        bs (int): Batch size.
+        img_size (int): Image height/width in pixels. Must be divisible by `block_size`.
+        block_size (int): Side length of a square block in pixels.
+        n_blocks (int): Number of blocks to set to 1 per image. Must satisfy
+            0 <= n_blocks <= (img_size // block_size) ** 2.
+        device (torch.device | str): Device for the returned tensor.
+
+    Returns:
+        torch.Tensor: Binary mask of shape (bs, g, g) with dtype torch.uint8,
+        where g = img_size // block_size. A value of 1 marks a selected block,
+        0 otherwise. To expand to pixel resolution (bs, img_size, img_size),
+        upsample with:
+            torch.kron(mask.float(), torch.ones(block_size, block_size, device=device)).byte()
+    """
+    g = img_size//block_size 
+    total_blocks = g*g
+    rand_indices = torch.argsort(torch.rand(bs, total_blocks, device=device), dim=1)[:,:n_blocks]
+    masks = torch.zeros(bs, g, g, dtype=torch.uint8, device=device)
+    rows = rand_indices//g 
+    cols = rand_indices%g 
+    batch_indices = torch.arange(bs, device=device).unsqueeze(1).expand(-1,n_blocks)
+    masks[batch_indices, rows, cols] = 1 
+    return masks
+
+@torch.no_grad()
+def point_block_mask(bs, ldmks, img_size, block_size,n_blocks):
+    """
+    Create a block mask guided by landmark proximity.
+
+    Args:
+        bs (int): Batch size.
+        ldmks (torch.Tensor): Landmark coordinates of shape (bs, P, 2).
+            Coordinates are expected in block-grid units [0, g-1], with
+            g = img_size // block_size. If landmarks are in pixel units,
+            convert with: torch.floor(ldmks / block_size).
+        img_size (int): Image height/width in pixels. Must be divisible by `block_size`.
+        block_size (int): Side length of a square block in pixels.
+        n_blocks (int): Total number of blocks to select per image (approximately
+            distributed across landmarks).
+
+    Returns:
+        torch.Tensor: Binary mask of shape (bs, img_size, img_size) with dtype
+        torch.uint8. Ones indicate selected blocks expanded to pixel resolution.
+    """
+    device=ldmks.device
+    g = img_size//block_size 
+
+    P = ldmks.shape[1]
+
+    coords = torch.arange(g, device=device)
+    rr,cc = torch.meshgrid(coords, coords, indexing='ij')
+    rr = rr.reshape(1,1,g,g).to(device)
+    cc = cc.reshape(1,1,g,g).to(device)
+
+    pr = ldmks[:,:,0].reshape(bs,P,1,1)
+    pc = ldmks[:,:,1].reshape(bs,P,1,1)
+
+    dist = torch.abs(rr-pr) + torch.abs(cc-pc)
+    probs = gaussian_prob(dist, sigma=1.5).sum(dim=1)
+
+    flat = probs.view(bs,P,-1)
+    _, idx = torch.topk(flat,k=int(n_blocks//P), dim=2)
+
+    mask = torch.zeros(bs,g*g,dtype=torch.uint8, device=device)
+    base = torch.arange(bs, device=device).view(bs,1,1)
+    base = base.expand(-1,P,int(n_blocks//P))
+    mask[base.reshape(-1),idx.reshape(-1)] = 1 
+    mask = mask.view(bs,g,g)
+
+    return torch.kron(mask.float(),torch.ones(block_size,block_size, device=device)).byte()

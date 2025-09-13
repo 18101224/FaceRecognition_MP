@@ -3,6 +3,7 @@ from .modules import Parital_Backbone
 from .modules import DeepComplexModule, ResidualModule
 from .modules import resnet32_backbone, resnet50_backbone, resnext50_backbone
 from .modules import e2_resnet32, e2_resnext50
+from .modules import OrthogonalDecomposer
 #from .modules import Combiner, multi_network, multi_network_MOCO
 from copy import deepcopy
 from torch import nn
@@ -171,12 +172,19 @@ def get_feature_module(feature_module, dim_in, depth, regular_simplex=False, num
     else:
         raise ValueError(f"Invalid feature module: {feature_module}")
 
+class Perpendicular(nn.Module):
+    def __init__(self, model_type):
+        super().__init__()
+
+
 class ImbalancedModel(nn.Module):
     # The model_dict dictionary maps model type strings to their corresponding constructor functions.
     # You can use it to dynamically select and instantiate a model based on a string key.
 
     def __init__(self, num_classes, model_type: str, feature_branch=False, feature_module=False,  
-    regular_simplex=False, cos=True, learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False):
+    regular_simplex=False, cos=True
+    , learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False,
+    decomposition=False):
         global model_dict, dim_dict
         if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
@@ -227,6 +235,7 @@ class ImbalancedModel(nn.Module):
             raise ValueError('input_layer is not supported')
         self.freeze = freeze_backbone
 
+        self.decomposition = OrthogonalDecomposer(dim_in) if decomposition else None
     def freeze_backbone(self):
         for p in self.backbone.parameters():
             p.requires_grad = False
@@ -248,7 +257,9 @@ class ImbalancedModel(nn.Module):
             x = (x - mean) / (std+1e-8)
 
         to_with = torch.enable_grad if not self.freeze else torch.no_grad
-        
+
+
+
         with to_with():
             if keypoint is not None:
                 z = self.backbone(x, keypoint) 
@@ -257,10 +268,19 @@ class ImbalancedModel(nn.Module):
         if isinstance(z, tuple):
             z = z[0]
 
+
         z = nn.functional.normalize(z, dim=-1, eps=1e-6) if self.cos else z
 
         z_ = nn.functional.normalize(self.feature_module(z), dim=-1, eps=1e-6) if self.feature_module is not False else z 
 
+        if getattr(self, 'decomposition', None) is not None:
+            z1, z2 = self.decomposition(z_)
+            z1 = nn.functional.normalize(z1, dim=-1,)
+            z2 = nn.functional.normalize(z2, dim=-1,)
+            logit = z1 @ self.get_kernel()
+            return logit, z1, z2 if features else logit 
+
+        
         weight = self.get_kernel() # dim, num_classes
         logit = z_ @ weight
 

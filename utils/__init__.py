@@ -14,9 +14,10 @@ from .eval_quality import *
 from .pushover import send_message
 from .epx_log import get_exp_id
 from .interpolation import calculate_class_centers, slerp_ema
+from .DDP import sync_scalar
 
 __all__ = ['get_acc', 'get_macro_acc', 'get_norm', 'get_pd', 'save_pd', 'save_pkl', 
-'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload', 'get_grads', 'calculate_class_centers', 'slerp_ema']
+'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload', 'get_grads', 'calculate_class_centers', 'slerp_ema', 'sync_scalar', 'get_ldmk']
 
 def get_grads(obj):
     """
@@ -61,19 +62,21 @@ def get_grads(obj):
     # Unknown type
     return None
 
+@torch.no_grad()
 def get_acc(x,y):
     '''
-    :param x:
-    :param y:
+    :param x: bs, num_classes // gpu 
+    :param y: bs // gpu 
     :return: scalar
     '''
     _,pred = torch.max(x,dim=-1)
     bs = x.shape[0]
     result = pred == y
-    result = result.detach().cpu()
+    result = result
     result = sum(result)
     return (result/bs).item()
 
+@torch.no_grad()
 def get_macro_acc(x,y):
     _, pred = torch.max(x,dim=-1)
     binary = pred == y
@@ -154,3 +157,9 @@ def torchload(path,weights_only,map_location=None):
         return torch.load(path,weights_only=weights_only,map_location=map_location)
     except:
         return torch.load(path,map_location=map_location)
+
+
+@torch.no_grad()
+def get_ldmk(img, aligner):
+    _,_,ldmk,_,_,_ = aligner(img)
+    return ldmk 
