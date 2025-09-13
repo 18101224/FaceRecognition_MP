@@ -6,12 +6,12 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import seaborn as sns
 from .sampler_wrapper import DistributedSamplerWrapper
-from .transform import get_transform, random_masking, point_block_mask
+from .transform import get_transform, random_masking, point_block_mask, get_fer_transforms
 from .noise_dataset import get_kfolds, get_loaders, get_noise_dataset
 # Public symbols that will be available when using `from dataset import *`
 __all__ = ['get_cifar_dataset', 'FER', 'FER_KFOLD', 'get_kfolds', 'get_transform', 'get_loaders', 'DistributedSamplerWrapper'
 , 'Large_dataset', 'get_noise_dataset', 'ImbalancedDatasetSampler',
- 'ClassBatchSampler', 'random_masking', 'point_block_mask']
+ 'ClassBatchSampler', 'random_masking', 'point_block_mask', 'get_fer_transforms']
 
 
 def visualize_label_distribution(labels, save_path=None, figsize=(15, 5), class_names=None):

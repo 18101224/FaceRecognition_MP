@@ -38,7 +38,7 @@ def get_loaders(args):
 
 def get_model(args):
     model =  ImbalancedModel(num_classes=7, model_type=args.model_type, feature_branch=False, 
-    feature_module=False, regular_simplex=False, cos=True, decomposition=True, learnable_input_dist=True, input_lasyer=False 
+    feature_module=False, regular_simplex=False, cos=True, decomposition=True, learnable_input_dist=True, input_layer=False,
     freeze_backbone=False, remain_backbone=False)
     return model.cuda() if args.world_size ==1 else DDP(model.cuda(), device_ids=[args.local_rank], find_unused_parameters=True)
 
@@ -88,13 +88,13 @@ def get_args():
     return args
 
 
-    pass
+
 
 class Trainer:
     def __init__(self, args):
         self.args = args 
         self.aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if args.model_type == 'kp_rpe' or args.id_strategy == 'masking' else None
-        self.model = get_model()
+        self.model = get_model(args)
         self.train_loader, self.valid_loader = get_loaders(args)
         self.init_logs()
 
@@ -106,7 +106,7 @@ class Trainer:
             id = get_exp_id(self.args)
             wandb.init(
                 project=f'Adv-Training-{self.args.dataset_name}',
-                id=self.id,
+                id=id,
                 name=id,
                 config=self.args
             )
@@ -124,9 +124,10 @@ class Trainer:
         if self.args.id_strategy == 'masking':
             bs,_,h,_ = img.shape
             U_mask = random_masking(bs=bs, img_size=h, block_size=7, n_blocks=self.args.n_blocks,device=torch.device('cuda')) 
+
             L_mask = point_block_mask(bs=bs,ldmks=ldmk,img_size=h,n_blocks=self.args.n_blocks,block_size=7)
-            anchor_img = img * U_mask 
-            neg_img = img * L_mask 
+            anchor_img = img * U_mask.unsqueeze(1)
+            neg_img = img * L_mask.unsqueeze(1)
             return anchor_img, neg_img 
         elif self.args.id_strategy == 'FR-clustering':
             raise NotImplementedError
@@ -148,9 +149,9 @@ class Trainer:
         ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None
         anchor_img, neg_img = self.transform(img, ldmk) 
         entire = torch.concat([anchor_img, neg_img], dim=0)
-        entire_ldmk = ldmk.repeat(2,1,1) if ldmk is not None else None
-        logits, fer_features, fr_features = self.model(entire, ldmk=entire_ldmk, features=True)
-        anchor_fr_features, neg_fr_features = torch.split(fr_features[-1], [bs,bs],dim=0)
+        entire_ldmk = ldmk.repeat(2,1,1) if (ldmk is not None and self.args.model_type == 'kp_rpe') else None
+        logits, fer_features, fr_features = self.model(entire, keypoint=entire_ldmk, features=True)
+        anchor_fr_features, neg_fr_features = torch.split(fr_features, [bs,bs],dim=0)
         logits, _ = torch.split(logits, [bs,bs],dim=0)
         ce_loss = torch.nn.functional.cross_entropy(logits,label)
         fr_loss = compute_adv_loss(anchor_fr_features, neg_fr_features)
@@ -159,8 +160,8 @@ class Trainer:
     def run_valid_forward(self, img, label):
         img = img.cuda()
         label = label.cuda()
-        ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None
-        logits = self.model(img, ldmk=ldmk) 
+        ldmk = get_ldmk(img, self.aligner) if (self.aligner is not None and self.args.model_type == 'kp_rpe') else None
+        logits = self.model(img, keypoint=ldmk) 
         loss = torch.nn.functional.cross_entropy(logits,label)
         return loss, logits 
     
@@ -180,7 +181,7 @@ class Trainer:
             bs = label.shape[0]
             total_ce_loss += ce_loss.detach().item() * bs
             total_fr_loss += fr_loss.detach().item() * bs
-            total_acc += get_acc(logits, label) * bs
+            total_acc += get_acc(logits, label.cuda()) * bs
         
         if self.args.world_size > 1 :
             total_ce_loss = sync_scalar(torch.tensor(total_ce_loss, device=self.device))
@@ -196,7 +197,7 @@ class Trainer:
             loss, logits = self.run_valid_forward(img,label)
             bs = label.shape[0]
             total_loss += loss.detach().item() * bs
-            total_acc += get_acc(logits, label) * bs
+            total_acc += get_acc(logits, label.cuda()) * bs
         if self.args.world_size > 1 :
             total_loss = sync_scalar(torch.tensor(total_loss, device=self.device))
             total_acc = sync_scalar(torch.tensor(total_acc, device=self.device))
@@ -242,3 +243,9 @@ class Trainer:
     def train(self):
         for epoch in range(self.args.n_epochs):
             self.epoch = epoch 
+            self.run_epoch()
+
+if __name__ == '__main__':
+    args = get_args()
+    trainer = Trainer(args)
+    trainer.train()

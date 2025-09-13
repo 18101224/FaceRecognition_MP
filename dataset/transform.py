@@ -5,7 +5,7 @@ import numpy as np
 from .augmentations import ImageNetPolicy, CIFAR10Policy, Cutout, GaussianBlur
 from PIL import ImageFilter
 
-__all__ = ['get_transform', 'get_imagenet_transforms', 'random_masking', 'point_block_mask']
+__all__ = ['get_transform', 'get_imagenet_transforms', 'random_masking', 'point_block_mask','get_fer_transforms']
 
 cifar10_mean = (0.4914, 0.4822, 0.4465)
 cifar10_std = (0.2023, 0.1994, 0.2010)
@@ -247,7 +247,7 @@ def get_fer_transforms(train,):
         ])
 
 def gaussian_prob(distance, sigma=1.5):
-    return np.exp(-0.5*(distance/sigma)**2)
+    return torch.exp(-0.5 * (distance / sigma) ** 2)
 
 
 @torch.no_grad()
@@ -278,51 +278,51 @@ def random_masking(bs, img_size, block_size, n_blocks, device):
     cols = rand_indices%g 
     batch_indices = torch.arange(bs, device=device).unsqueeze(1).expand(-1,n_blocks)
     masks[batch_indices, rows, cols] = 1 
-    return masks
+    return torch.kron(masks.float(), torch.ones(block_size, block_size, device=device)).byte() 
 
 @torch.no_grad()
-def point_block_mask(bs, ldmks, img_size, block_size,n_blocks):
+def point_block_mask(bs, ldmks, img_size, block_size, n_blocks, sigma=1.5):
     """
-    Create a block mask guided by landmark proximity.
-
     Args:
-        bs (int): Batch size.
-        ldmks (torch.Tensor): Landmark coordinates of shape (bs, P, 2).
-            Coordinates are expected in block-grid units [0, g-1], with
-            g = img_size // block_size. If landmarks are in pixel units,
-            convert with: torch.floor(ldmks / block_size).
-        img_size (int): Image height/width in pixels. Must be divisible by `block_size`.
-        block_size (int): Side length of a square block in pixels.
-        n_blocks (int): Total number of blocks to select per image (approximately
-            distributed across landmarks).
-
+        ldmks: (bs, P, 2), block-grid 좌표(0..g-1). 픽셀 좌표면 floor(ldmks / block_size).
     Returns:
-        torch.Tensor: Binary mask of shape (bs, img_size, img_size) with dtype
-        torch.uint8. Ones indicate selected blocks expanded to pixel resolution.
+        (bs, img_size, img_size) uint8 binary mask
     """
-    device=ldmks.device
-    g = img_size//block_size 
-
+    device = ldmks.device
+    g = img_size // block_size
     P = ldmks.shape[1]
 
+    # grid
     coords = torch.arange(g, device=device)
-    rr,cc = torch.meshgrid(coords, coords, indexing='ij')
-    rr = rr.reshape(1,1,g,g).to(device)
-    cc = cc.reshape(1,1,g,g).to(device)
+    rr, cc = torch.meshgrid(coords, coords, indexing='ij')           # (g,g)
+    rr = rr.view(1, 1, g, g)                                         # (1,1,g,g)
+    cc = cc.view(1, 1, g, g)                                         # (1,1,g,g)
 
-    pr = ldmks[:,:,0].reshape(bs,P,1,1)
-    pc = ldmks[:,:,1].reshape(bs,P,1,1)
+    # landmarks
+    pr = ldmks[:, :, 0].view(bs, P, 1, 1)                             # (bs,P,1,1)
+    pc = ldmks[:, :, 1].view(bs, P, 1, 1)                             # (bs,P,1,1)
 
-    dist = torch.abs(rr-pr) + torch.abs(cc-pc)
-    probs = gaussian_prob(dist, sigma=1.5).sum(dim=1)
+    # per-point distance & probability
+    dist = torch.abs(rr - pr) + torch.abs(cc - pc)                    # (bs,P,g,g)
+    probs_per_point = torch.exp(-0.5 * (dist / sigma) ** 2)           # (bs,P,g,g)
 
-    flat = probs.view(bs,P,-1)
-    _, idx = torch.topk(flat,k=int(n_blocks//P), dim=2)
+    # 포인트별 topk: (bs,P,g*g) -> topk k = n_blocks//P
+    flat = probs_per_point.view(bs, P, -1)                            # (bs,P,g*g)
+    k_per_point = int(n_blocks // P)
+    k_per_point = max(0, min(k_per_point, g * g))                     # 안전 클램프
+    if k_per_point == 0:
+        # 선택할 블록이 없으면 전부 0 마스크 반환
+        return torch.zeros(bs, img_size, img_size, dtype=torch.uint8, device=device)
 
-    mask = torch.zeros(bs,g*g,dtype=torch.uint8, device=device)
-    base = torch.arange(bs, device=device).view(bs,1,1)
-    base = base.expand(-1,P,int(n_blocks//P))
-    mask[base.reshape(-1),idx.reshape(-1)] = 1 
-    mask = mask.view(bs,g,g)
+    _, idx = torch.topk(flat, k=k_per_point, dim=2)                   # (bs,P,k)
 
-    return torch.kron(mask.float(),torch.ones(block_size,block_size, device=device)).byte()
+    # scatter to grid mask
+    mask_flat = torch.zeros(bs, g * g, dtype=torch.uint8, device=device)
+    # 배치·포인트 인덱스 브로드캐스트
+    b_idx = torch.arange(bs, device=device).view(bs, 1, 1).expand(bs, P, k_per_point)
+    # (bs,P,k) => (bs*P*k,)
+    mask_flat[b_idx.reshape(-1), idx.reshape(-1)] = 1
+    mask_grid = mask_flat.view(bs, g, g)                              # (bs,g,g)
+
+    # 픽셀 단위로 확장
+    return torch.kron(mask_grid.float(), torch.ones(block_size, block_size, device=device)).byte()
