@@ -326,3 +326,12 @@ def point_block_mask(bs, ldmks, img_size, block_size, n_blocks, sigma=1.5):
 
     # 픽셀 단위로 확장
     return torch.kron(mask_grid.float(), torch.ones(block_size, block_size, device=device)).byte()
+
+@torch.no_grad()
+def apply_mask(img, mask, mask_vector=None):
+    '''
+    img : (bs, 3, h, w)
+    mask : (bs, h, w)
+    mask_vector : (3,7,7) or None 
+    '''
+    mask = mask.unsqueeze(1)

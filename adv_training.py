@@ -127,12 +127,14 @@ class Trainer:
             U_mask = random_masking(bs=bs, img_size=h, block_size=7, n_blocks=self.args.n_blocks,device=torch.device('cuda')) 
 
             L_mask = point_block_mask(bs=bs,ldmks=ldmk,img_size=h,n_blocks=self.args.n_blocks,block_size=7)
+            
             anchor_img = img * U_mask.unsqueeze(1)
             neg_img = img * L_mask.unsqueeze(1)
             
             if self.args.debug:
                 save_image(anchor_img, f'debug/anchor_img_{self.args.id_strategy}.png')
                 save_image(neg_img, f'debug/neg_img_{self.args.id_strategy}.png')
+                import sys; sys.exit()
 
             return anchor_img, neg_img 
         elif self.args.id_strategy == 'FR-clustering':
