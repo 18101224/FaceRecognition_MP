@@ -14,6 +14,7 @@ import os
 from opt import SAM
 from datetime import timedelta
 from models import ImbalancedModel
+from torchvision.utils import save_image
 
 def get_optimizer(model, args):
     opt = SAM(model.parameters(),base_optimizer=torch.optim.AdamW,lr=args.learning_rate,weight_decay=1e-4)
@@ -73,7 +74,7 @@ def get_args():
     
     # logging args 
     args.add_argument('--server', type=str)
-    
+    args.add_argument('--debug',default=False)
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
     if args.world_size > 1 :
@@ -128,6 +129,11 @@ class Trainer:
             L_mask = point_block_mask(bs=bs,ldmks=ldmk,img_size=h,n_blocks=self.args.n_blocks,block_size=7)
             anchor_img = img * U_mask.unsqueeze(1)
             neg_img = img * L_mask.unsqueeze(1)
+            
+            if self.args.debug:
+                save_image(anchor_img, f'debug/anchor_img_{self.args.id_strategy}.png')
+                save_image(neg_img, f'debug/neg_img_{self.args.id_strategy}.png')
+
             return anchor_img, neg_img 
         elif self.args.id_strategy == 'FR-clustering':
             raise NotImplementedError
