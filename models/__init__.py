@@ -53,7 +53,7 @@ dim_dict = {
     }
 }
 
-if False : 
+if True : 
     from .kp_rpe import *
     class kprpe_fer(nn.Module):
         def __init__(self,cfg_path,token_path=None,force_download=False,cos=False):
