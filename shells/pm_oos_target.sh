@@ -4,7 +4,7 @@
 #SBATCH -J hcir_oos_target
 #SBATCH -N 1
 #SBATCH --gpus-per-node=4
-#SBATCH -t 00:30:00
+#SBATCH -t 24:00:00
 #SBATCH -o logs/hcir.log
 #SBATCH -e logs/hcir_error.log
 #SBATCH --mail-user=alswo01287@naver.com
@@ -16,10 +16,6 @@
 export URL="https://api.pushover.net/1/messages.json"
 export alarm_user="u2258jmd7zfuqh7r3ap4rx9bo6szh9"
 export alarm_app="a8ekwdu7tj37drid8o5q6sudd5f6ed"
-
-# Learning rate 리스트
-export LR_0=0.000001
-export LR_1=0.000005
 
 
 source /pscratch/sd/s/sgkim/hcir/mc/bin/activate
