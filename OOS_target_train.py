@@ -44,8 +44,6 @@ def get_args():
 
     args = ArgumentParser()
     # for logs
-    args.add_argument('--server',required=True,help='server name')
-    args.add_argument('--wandb_token')
     args.add_argument('--use_tf',default=False)
 
     # training hyperparameteres
@@ -76,6 +74,7 @@ def get_args():
     args.add_argument('--local_rank')
     args.add_argument('--rank')
     args.add_argument('--instance_ada_dropout',default=False)
+    args.add_argument('--num_workers',type=int, default=0)
 
     # OOS-arguments
     args.add_argument('--n_folds',type=int)
@@ -86,6 +85,7 @@ def get_args():
 
 
     args = args.parse_args()
+    vars(args)['server'] = os.getenv('SERVER','0')
     if args.world_size > 1 :
         init_process_group('nccl',world_size=args.world_size,
                            timeout=timedelta(minutes=60))
@@ -124,7 +124,7 @@ class Trainer :
             batch_size=args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=16,
+            num_workers=self.args.num_workers,
             sampler=train_sampler
         )
         self.valid_set = get_noise_dataset(args=args, train=False)
@@ -134,7 +134,7 @@ class Trainer :
             batch_size=args.batch_size,
             shuffle=False,
             pin_memory=True,
-            num_workers=16,
+            num_workers=self.args.num_workers,
             sampler=valid_sampler
         )
         # init model 

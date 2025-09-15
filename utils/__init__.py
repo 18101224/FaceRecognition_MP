@@ -16,6 +16,7 @@ from .epx_log import get_exp_id
 from .interpolation import calculate_class_centers, slerp_ema
 from .DDP import sync_scalar
 from .visualize import crop_to_square_grid
+from facenet_pytorch import MTCNN
 __all__ = ['get_acc', 'get_macro_acc', 'get_norm', 'get_pd', 'save_pd', 'save_pkl', 
 'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload', 'get_grads',
  'calculate_class_centers', 'slerp_ema', 'sync_scalar', 'get_ldmk', 'crop_to_square_grid']

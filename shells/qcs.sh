@@ -19,7 +19,7 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 
 
 # Launch a single 4-GPU experiment with torchrun
-python3 adv_training.py --world_size=1 --use_tf=True \
+python3 adv_training.py --world_size=1 --use_tf=True --num_workers=32 \
 --model_type=ir50 \
 --dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced \
 --id_strategy=masking --n_blocks=80 --detach_lowlevel=True --beta=0.3 --partial_update=True \

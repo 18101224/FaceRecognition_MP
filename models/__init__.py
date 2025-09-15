@@ -16,8 +16,14 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from functools import partial
 from .kp_rpe import get_kprpe_pretrained
 import torch 
-
-__all__ = ['get_ir', 'kprpe_fer', 'make_g_nets', 'ImbalancedModel', 'get_noise_model', 'ir50_backbone', 'get_model', 'get_kprpe_pretrained']
+from .modules import get_mfnet, vit_small_patch16, vit_base_patch16, vit_large_patch16, vit_huge_patch14
+__all__ = ['get_ir', 'kprpe_fer',
+ 'make_g_nets', 'ImbalancedModel',
+  'get_noise_model', 'ir50_backbone',
+   'get_model', 'get_kprpe_pretrained', 
+   'get_mfnet', 'vit_small_patch16', 
+   'vit_base_patch16', 'vit_large_patch16',
+    'vit_huge_patch14']
 
 
 model_dict = {
@@ -235,7 +241,7 @@ class ImbalancedModel(nn.Module):
             raise ValueError('input_layer is not supported')
         self.freeze = freeze_backbone
 
-        self.decomposition = OrthogonalDecomposer(dim_in) if decomposition else None
+        self.decomposition = OrthogonalDecomposer(dim_in) if decomposition=='Cayley' else None
 
     def freeze_backbone(self):
         for p in self.backbone.parameters():
@@ -258,8 +264,6 @@ class ImbalancedModel(nn.Module):
             x = (x - mean) / (std+1e-8)
 
         to_with = torch.enable_grad if not self.freeze else torch.no_grad
-
-
 
         with to_with():
             if keypoint is not None:
@@ -284,7 +288,12 @@ class ImbalancedModel(nn.Module):
                 return logit, z1, z2
             else:  
                 return logit
-
+        else:
+            logit = z_ @ self.get_kernel()
+            if features : 
+                return logit, z_, z_
+            else:
+                return logit 
         
         weight = self.get_kernel() # dim, num_classes
         logit = z_ @ weight

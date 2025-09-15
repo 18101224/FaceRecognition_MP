@@ -1,6 +1,8 @@
 from torch.nn import functional 
 import torch 
+from .analysis import analyze_and_update_gradients
 
+__all__ = ['compute_adv_loss', 'analyze_and_update_gradients']
 def compute_adv_loss(anchor_features, neg_features): 
     bs = anchor_features.shape[0]
     positives = ( anchor_features * neg_features ).sum(dim=-1).reshape(-1)

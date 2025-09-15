@@ -312,7 +312,6 @@ def point_block_mask(bs, ldmks, img_size, block_size, n_blocks, sigma=1.5, eye_s
     P = ldmks.shape[1]
     if P == 0:
         return torch.zeros(bs, img_size, img_size, dtype=torch.uint8, device=device)
-
     # Grid coordinates (flattened)
     coords = torch.arange(g, device=device, dtype=ldmks.dtype)
     rr, cc = torch.meshgrid(coords, coords, indexing='ij')            # (g,g)
@@ -329,6 +328,7 @@ def point_block_mask(bs, ldmks, img_size, block_size, n_blocks, sigma=1.5, eye_s
     else:
         pr = (ldmks[:, :, 1].clamp(0, 1) * (g - 1)).unsqueeze(-1)     # (bs,P,1)
         pc = (ldmks[:, :, 0].clamp(0, 1) * (g - 1)).unsqueeze(-1)     # (bs,P,1)
+
 
     # Per-point Gaussian probability over grid cells (with larger sigma for eyes)
     dist2 = (rr - pr) ** 2 + (cc - pc) ** 2                           # (bs,P,g*g)
@@ -410,7 +410,7 @@ def apply_mask(img, mask, block_size, mask_vector=None):
     return img * (1.0 - m) + tiled * m
     
 @torch.no_grad()
-def masking_pair(img, ldmk, n_blocks, block_size=7, mask_vector=None, sigma=1.5, eye_sigma_scale=3.0):
+def masking_pair(img, ldmk, n_blocks, block_size=7, mask_vector=None, sigma=1.5, eye_sigma_scale=3.0, anchor_mask=False):
     """
     Produce anchor and negative masked images.
 
@@ -429,11 +429,11 @@ def masking_pair(img, ldmk, n_blocks, block_size=7, mask_vector=None, sigma=1.5,
     l_mask = point_block_mask(bs=bs, ldmks=ldmk, img_size=h, n_blocks=n_blocks, block_size=block_size, sigma=sigma, eye_sigma_scale=eye_sigma_scale)
     if mask_vector is None:
         # Multiplicative masking (legacy)
-        anchor_img = img * u_mask.unsqueeze(1)
-        neg_img = img * (1 - l_mask).unsqueeze(1)
+        anchor_img = img * u_mask.unsqueeze(1) if  anchor_mask else img 
+        neg_img = img * (1-l_mask).unsqueeze(1)
     else:
         # Replace selected blocks with the learnable vector.
-        anchor_img = apply_mask(img, u_mask, block_size=block_size, mask_vector=mask_vector)
+        anchor_img = apply_mask(img, u_mask, block_size=block_size, mask_vector=mask_vector) if  anchor_mask else img 
         # For negatives, replace keypoint blocks directly (do not invert)
         neg_img = apply_mask(img, l_mask, block_size=block_size, mask_vector=mask_vector)
     return anchor_img, neg_img
