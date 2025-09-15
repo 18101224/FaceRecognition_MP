@@ -10,7 +10,7 @@
 #SBATCH --mail-user=alswo01287@naver.com
 #SBATCH --mail-type=ALL
 #SBATCH -C gpu&hbm80g
-#SBATCH -q debug
+#SBATCH -q regular
 
 
 export URL="https://api.pushover.net/1/messages.json"
