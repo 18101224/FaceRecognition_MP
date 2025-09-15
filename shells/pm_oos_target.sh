@@ -4,7 +4,7 @@
 #SBATCH -J hcir_oos_target
 #SBATCH -N 1
 #SBATCH --gpus-per-node=4
-#SBATCH -t 24:00:00
+#SBATCH -t 00:30:00
 #SBATCH -o logs/hcir.log
 #SBATCH -e logs/hcir_error.log
 #SBATCH --mail-user=alswo01287@naver.com
