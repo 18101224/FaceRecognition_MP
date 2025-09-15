@@ -16,6 +16,7 @@ import torch.nn as nn
 
 import timm.models.vision_transformer
 
+__all__ = ['VisionTransformer','vit_small_patch16','vit_base_patch16','vit_large_patch16','vit_huge_patch14']
 
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
     """ Vision Transformer with support for global average pooling
@@ -58,9 +59,9 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         return out
 
     def forward_features(self, x, mask=None):
-        B,c,h,w = x.shape
+        B,_,h,_ = x.shape
         if h == 112 :
-            x = F.interpolate(x, size=(224, 224), mode='bilinear', align_corners=False)
+            x = nn.functional.interpolate(x, size=(224, 224), mode='bilinear', align_corners=False)
 
         x = self.patch_embed(x) # flatten patches 
 
@@ -83,10 +84,15 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         return outcome
 
 
+def load_ckpt(ckpt):
+    return torch.load(ckpt,map_location='cpu',weights_only=False)['model']
+
 def vit_small_patch16(**kwargs):
     model = VisionTransformer(
         patch_size=16, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    if getattr(kwargs,'ckpt_path',None) is not None :
+        model.load_state_dict(load_ckpt(kwargs['ckpt_path']))
     return model
 
 
@@ -94,6 +100,8 @@ def vit_base_patch16(**kwargs):
     model = VisionTransformer(
         patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    if getattr(kwargs,'ckpt_path',None) is not None :
+        model.load_state_dict(load_ckpt(kwargs['ckpt_path']))
     return model
 
 
@@ -101,6 +109,8 @@ def vit_large_patch16(**kwargs):
     model = VisionTransformer(
         patch_size=16, embed_dim=1024, depth=24, num_heads=16, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    if getattr(kwargs,'ckpt_path',None) is not None :
+        model.load_state_dict(load_ckpt(kwargs['ckpt_path']))
     return model
 
 
@@ -108,4 +118,6 @@ def vit_huge_patch14(**kwargs):
     model = VisionTransformer(
         patch_size=14, embed_dim=1280, depth=32, num_heads=16, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    if getattr(kwargs,'ckpt_path',None) is not None :
+        model.load_state_dict(load_ckpt(kwargs['ckpt_path']))
     return model

@@ -37,7 +37,6 @@ class SEModule(Module):
         out = module_input * x
         return out
 
-
 # i = 0
 
 class bottleneck_IR(Module):

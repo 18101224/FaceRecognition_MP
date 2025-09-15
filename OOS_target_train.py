@@ -150,7 +150,7 @@ class Trainer :
         else:
             self.aligner = None
         self.opt = get_optimizer(args)(self.model.parameters() if args.world_size == 1 else self.model.module.parameters())
-        self.scheduler = get_scheduler(args)(self.opt)
+        self.scheduler = get_scheduler(args)(self.opt) if get_scheduler(args) is not None else None
 
         if args.instance_ada_loss or args.cos_margin_loss:
             self.g_nets = make_g_nets(args, self.device, freeze=True)
@@ -350,7 +350,7 @@ class Trainer :
             to_load = self.model.module if self.args.world_size > 1 else self.model
             to_load.load_state_dict(checkpoint['model_state_dict'])
             self.opt.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict']) if self.scheduler is not None else None
             self.start_epoch = checkpoint.get('epoch', 0) + 1
             self.best = checkpoint.get('best', -1e10)
             self.log = checkpoint.get('log', [])
