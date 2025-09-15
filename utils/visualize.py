@@ -2,7 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 import torch
+import math
 
+
+def crop_to_square_grid(x):
+    batch = x.shape[0]
+    grid_size = max(int(math.sqrt(batch)), 1)
+    keep = grid_size * grid_size
+    return x[:keep], grid_size
+    
 def calc_angle(centers, embeds):
     mat = embeds@centers.transpose(1,2)
     angles = torch.arccos(mat)

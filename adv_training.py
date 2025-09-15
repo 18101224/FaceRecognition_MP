@@ -1,16 +1,17 @@
 import torch 
 import torch.distributed as dist
-from dataset import random_masking, point_block_mask, get_fer_transforms, FER, DistributedSamplerWrapper, ImbalancedDatasetSampler
+from dataset import masking_pair, get_fer_transforms, FER, DistributedSamplerWrapper, ImbalancedDatasetSampler
 from aligners import get_aligner
 from argparse import ArgumentParser
 from torch.distributed import init_process_group, barrier
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm 
-from utils import sync_scalar, get_ldmk, get_exp_id, get_acc
+from utils import sync_scalar, get_ldmk, get_exp_id, get_acc, crop_to_square_grid
 from Loss.Adv import compute_adv_loss
 import wandb 
 import os 
+import math
 from opt import SAM
 from datetime import timedelta
 from models import ImbalancedModel
@@ -73,7 +74,6 @@ def get_args():
     args.add_argument('--use_tf', default=False)
     
     # logging args 
-    args.add_argument('--server', type=str)
     args.add_argument('--debug',default=False)
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
@@ -123,17 +123,13 @@ class Trainer:
         
     def transform(self, img, ldmk):
         if self.args.id_strategy == 'masking':
-            bs,_,h,_ = img.shape
-            U_mask = random_masking(bs=bs, img_size=h, block_size=7, n_blocks=self.args.n_blocks,device=torch.device('cuda')) 
-
-            L_mask = point_block_mask(bs=bs,ldmks=ldmk,img_size=h,n_blocks=self.args.n_blocks,block_size=7)
-            
-            anchor_img = img * U_mask.unsqueeze(1)
-            neg_img = img * L_mask.unsqueeze(1)
+            anchor_img, neg_img = masking_pair(img, ldmk, n_blocks=self.args.n_blocks, block_size=7)
             
             if self.args.debug:
-                save_image(anchor_img, f'debug/anchor_img_{self.args.id_strategy}.png')
-                save_image(neg_img, f'debug/neg_img_{self.args.id_strategy}.png')
+                anchor_to_save, nrow_a = crop_to_square_grid(anchor_img)
+                neg_to_save, nrow_n = crop_to_square_grid(neg_img)
+                save_image(anchor_to_save, f'results/anchor_img_{self.args.id_strategy}.png', nrow=nrow_a)
+                save_image(neg_to_save, f'results/neg_img_{self.args.id_strategy}.png', nrow=nrow_n)
                 import sys; sys.exit()
 
             return anchor_img, neg_img 

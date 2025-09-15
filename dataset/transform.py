@@ -1,11 +1,12 @@
 from torchvision import transforms 
 import torch
+import torch.nn.functional as F
 import random
 import numpy as np
 from .augmentations import ImageNetPolicy, CIFAR10Policy, Cutout, GaussianBlur
 from PIL import ImageFilter
 
-__all__ = ['get_transform', 'get_imagenet_transforms', 'random_masking', 'point_block_mask','get_fer_transforms']
+__all__ = ['get_transform', 'get_imagenet_transforms', 'random_masking', 'point_block_mask','get_fer_transforms', 'masking_pair']
 
 cifar10_mean = (0.4914, 0.4822, 0.4465)
 cifar10_std = (0.2023, 0.1994, 0.2010)
@@ -232,7 +233,6 @@ def get_fer_transforms(train,):
     if train :
         return transforms.Compose([
             transforms.Resize((112, 112)),
-            transforms.RandomResizedCrop(112, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
             transforms.RandomRotation(15),
@@ -281,57 +281,159 @@ def random_masking(bs, img_size, block_size, n_blocks, device):
     return torch.kron(masks.float(), torch.ones(block_size, block_size, device=device)).byte() 
 
 @torch.no_grad()
-def point_block_mask(bs, ldmks, img_size, block_size, n_blocks, sigma=1.5):
+def point_block_mask(bs, ldmks, img_size, block_size, n_blocks, sigma=1.5, eye_sigma_scale=2.0):
     """
     Args:
-        ldmks: (bs, P, 2), block-grid 좌표(0..g-1). 픽셀 좌표면 floor(ldmks / block_size).
+        ldmks: (bs, P, 2) in normalized coordinates (0..1). Each point is the
+               keypoint location in normalized image space and will be mapped
+               to the coarse block grid of size g = img_size // block_size.
+        img_size: int, image height/width in pixels (assumed square).
+        block_size: int, side length of block in pixels.
+        n_blocks: int, number of blocks to select per image (0..g*g).
+        sigma: float, base Gaussian std in grid units.
+        eye_sigma_scale: float, multiplicative factor applied to sigma for
+            eye keypoints (indices 0 and 1) to broaden their influence.
     Returns:
-        (bs, img_size, img_size) uint8 binary mask
+        (bs, img_size, img_size) uint8 binary mask, with exactly `n_blocks`
+        blocks set to 1 per image (unless n_blocks > g*g, then clamped).
     """
     device = ldmks.device
     g = img_size // block_size
-    P = ldmks.shape[1]
-
-    # grid
-    coords = torch.arange(g, device=device)
-    rr, cc = torch.meshgrid(coords, coords, indexing='ij')           # (g,g)
-    rr = rr.view(1, 1, g, g)                                         # (1,1,g,g)
-    cc = cc.view(1, 1, g, g)                                         # (1,1,g,g)
-
-    # landmarks
-    pr = ldmks[:, :, 0].view(bs, P, 1, 1)                             # (bs,P,1,1)
-    pc = ldmks[:, :, 1].view(bs, P, 1, 1)                             # (bs,P,1,1)
-
-    # per-point distance & probability
-    dist = torch.abs(rr - pr) + torch.abs(cc - pc)                    # (bs,P,g,g)
-    probs_per_point = torch.exp(-0.5 * (dist / sigma) ** 2)           # (bs,P,g,g)
-
-    # 포인트별 topk: (bs,P,g*g) -> topk k = n_blocks//P
-    flat = probs_per_point.view(bs, P, -1)                            # (bs,P,g*g)
-    k_per_point = int(n_blocks // P)
-    k_per_point = max(0, min(k_per_point, g * g))                     # 안전 클램프
-    if k_per_point == 0:
-        # 선택할 블록이 없으면 전부 0 마스크 반환
+    if g <= 0:
         return torch.zeros(bs, img_size, img_size, dtype=torch.uint8, device=device)
 
-    _, idx = torch.topk(flat, k=k_per_point, dim=2)                   # (bs,P,k)
+    # Clamp n_blocks to grid capacity
+    max_blocks = g * g
+    n_blocks = int(max(0, min(int(n_blocks), max_blocks)))
+    # Handle degenerate cases early
+    if n_blocks == 0 or ldmks.numel() == 0:
+        return torch.zeros(bs, img_size, img_size, dtype=torch.uint8, device=device)
 
-    # scatter to grid mask
-    mask_flat = torch.zeros(bs, g * g, dtype=torch.uint8, device=device)
-    # 배치·포인트 인덱스 브로드캐스트
-    b_idx = torch.arange(bs, device=device).view(bs, 1, 1).expand(bs, P, k_per_point)
-    # (bs,P,k) => (bs*P*k,)
-    mask_flat[b_idx.reshape(-1), idx.reshape(-1)] = 1
+    P = ldmks.shape[1]
+    if P == 0:
+        return torch.zeros(bs, img_size, img_size, dtype=torch.uint8, device=device)
+
+    # Grid coordinates (flattened)
+    coords = torch.arange(g, device=device, dtype=ldmks.dtype)
+    rr, cc = torch.meshgrid(coords, coords, indexing='ij')            # (g,g)
+    rr = rr.reshape(1, 1, g * g)
+    cc = cc.reshape(1, 1, g * g)
+
+    # Landmarks: support normalized (0..1) or pixel (0..img_size-1)
+    # Heuristic: if any value > 1.5, treat as pixel coordinates
+    is_pixel = (ldmks.max() > 1.5)
+    if is_pixel:
+        # Note: rr compares with row (y), cc with col (x)
+        pr = (ldmks[:, :, 1].clamp(0, img_size - 1) / block_size).unsqueeze(-1)  # (bs,P,1)
+        pc = (ldmks[:, :, 0].clamp(0, img_size - 1) / block_size).unsqueeze(-1)  # (bs,P,1)
+    else:
+        pr = (ldmks[:, :, 1].clamp(0, 1) * (g - 1)).unsqueeze(-1)     # (bs,P,1)
+        pc = (ldmks[:, :, 0].clamp(0, 1) * (g - 1)).unsqueeze(-1)     # (bs,P,1)
+
+    # Per-point Gaussian probability over grid cells (with larger sigma for eyes)
+    dist2 = (rr - pr) ** 2 + (cc - pc) ** 2                           # (bs,P,g*g)
+    sigma_pp = torch.full((bs, P, 1), float(sigma), device=device, dtype=ldmks.dtype)
+    if P >= 2:
+        sigma_pp[:, 0, 0] = float(sigma) * float(eye_sigma_scale)
+        sigma_pp[:, 1, 0] = float(sigma) * float(eye_sigma_scale)
+    probs = torch.exp(-0.5 * (dist2 / (sigma_pp ** 2)))               # (bs,P,g*g)
+
+    # Vectorized balanced allocation: enforce equal quota per keypoint
+    K = g * g
+    mask_flat = torch.zeros(bs, K, dtype=torch.uint8, device=device)  # (bs,K)
+    base = n_blocks // P
+    rem = n_blocks % P
+    # per-point remaining quota (distribute the remainder to the first `rem` keypoints)
+    remaining_pp = torch.full((bs, P), base, device=device, dtype=torch.long)
+    if rem > 0:
+        extra = torch.zeros(P, dtype=torch.long, device=device)
+        extra[:rem] = 1
+        remaining_pp = remaining_pp + extra.view(1, P)
+
+    # Iterate at most max quota steps; break early if all done
+    max_steps = int(base + (1 if rem > 0 else 0))
+    for _ in range(max_steps):
+        if torch.all(remaining_pp <= 0):
+            break
+        # Mask out already selected blocks
+        cur_probs = probs.masked_fill(mask_flat.bool().unsqueeze(1), float('-inf'))  # (bs,P,K)
+        # Mask out keypoints that have satisfied their quota
+        cur_probs = cur_probs.masked_fill((remaining_pp <= 0).unsqueeze(-1), float('-inf'))
+        # Best candidate per keypoint
+        chosen = torch.argmax(cur_probs, dim=2)                       # (bs,P)
+        # First occurrence across keypoints to avoid within-step duplicates
+        one_hot = F.one_hot(chosen, num_classes=K).to(cur_probs.dtype)  # (bs,P,K)
+        csum = torch.cumsum(one_hot, dim=1)
+        first_mask_p = (one_hot > 0) & (csum == 1)                    # (bs,P,K)
+        # We only take from keypoints that still have remaining quota this step
+        take_mask = (remaining_pp > 0) & first_mask_p.any(dim=2)       # (bs,P)
+        step_keep = (first_mask_p & take_mask.unsqueeze(-1)).any(dim=1)  # (bs,K)
+        # Update selection and remaining counts
+        newly_selected = step_keep & ~mask_flat.bool()
+        num_new = newly_selected.sum(dim=1)
+        mask_flat = (mask_flat.bool() | step_keep).to(torch.uint8)
+        # Decrement per-point remaining where we picked
+        # Determine which keypoints successfully placed a block
+        success_pp = (first_mask_p & take_mask.unsqueeze(-1)).any(dim=2).to(torch.long)  # (bs,P)
+        remaining_pp = remaining_pp - success_pp
+
     mask_grid = mask_flat.view(bs, g, g)                              # (bs,g,g)
-
-    # 픽셀 단위로 확장
+    # Expand to pixel resolution
     return torch.kron(mask_grid.float(), torch.ones(block_size, block_size, device=device)).byte()
 
 @torch.no_grad()
-def apply_mask(img, mask, mask_vector=None):
+def apply_mask(img, mask, block_size, mask_vector=None):
     '''
     img : (bs, 3, h, w)
-    mask : (bs, h, w)
-    mask_vector : (3,7,7) or None 
+    mask : (bs, h, w) pixel-level 0/1 mask aligned to blocks
+    block_size : int block side in pixels
+    mask_vector : (3, block_size, block_size) or None. If provided, replace
+                  selected blocks with this vector. Else, multiply image by mask.
     '''
-    mask = mask.unsqueeze(1)
+    bs, _, h, w = img.shape
+    device = img.device
+    if mask_vector is None:
+        return img * mask.unsqueeze(1).float()
+    g = h // block_size
+    # Coarse block mask (bs,g,g)
+    coarse = mask.view(bs, g, block_size, g, block_size).amax(dim=(2,4))
+    # Tile learnable block over selected cells
+    block_vec = mask_vector.view(1, 3, 1, 1, block_size, block_size).to(img.dtype).to(device)
+    tiled = torch.where(
+        coarse.view(bs, 1, g, g, 1, 1).bool(),
+        block_vec,
+        torch.zeros(1, 3, 1, 1, block_size, block_size, device=device, dtype=img.dtype)
+    )
+    tiled = tiled.permute(0,1,2,4,3,5).contiguous().view(bs, 3, g*block_size, g*block_size)
+    # Pixel-level mask expanded to channels
+    m = mask.unsqueeze(1).float()
+    return img * (1.0 - m) + tiled * m
+    
+@torch.no_grad()
+def masking_pair(img, ldmk, n_blocks, block_size=7, mask_vector=None, sigma=1.5, eye_sigma_scale=3.0):
+    """
+    Produce anchor and negative masked images.
+
+    Args:
+        img: (bs, 3, H, W) float tensor.
+        ldmk: (bs, P, 2) keypoints (normalized (0..1) or pixel coords).
+        n_blocks: int, number of blocks per image.
+        block_size: int, pixel size for each block.
+
+    Returns:
+        anchor_img, neg_img
+    """
+    bs, _, h, _ = img.shape
+    device = img.device
+    u_mask = random_masking(bs=bs, img_size=h, block_size=block_size, n_blocks=n_blocks, device=device)
+    l_mask = point_block_mask(bs=bs, ldmks=ldmk, img_size=h, n_blocks=n_blocks, block_size=block_size, sigma=sigma, eye_sigma_scale=eye_sigma_scale)
+    if mask_vector is None:
+        # Multiplicative masking (legacy)
+        anchor_img = img * u_mask.unsqueeze(1)
+        neg_img = img * (1 - l_mask).unsqueeze(1)
+    else:
+        # Replace selected blocks with the learnable vector.
+        anchor_img = apply_mask(img, u_mask, block_size=block_size, mask_vector=mask_vector)
+        # For negatives, replace keypoint blocks directly (do not invert)
+        neg_img = apply_mask(img, l_mask, block_size=block_size, mask_vector=mask_vector)
+    return anchor_img, neg_img
