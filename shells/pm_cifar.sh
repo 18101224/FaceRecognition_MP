@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J hcir_raf
 #SBATCH -A m1248_g 
-#SBATCH -q debug
+#SBATCH -q regular
 #SBATCH -N 1
-#SBATCH -t 00:30:00
+#SBATCH -t 20:00:00
 #SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
