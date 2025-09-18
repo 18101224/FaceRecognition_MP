@@ -134,6 +134,11 @@ def get_args():
         torch.cuda.set_device(args.local_rank)
     else:
         torch.cuda.set_device(0)
+
+    if args.use_tf:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
     return args
 
 class Trainer:
