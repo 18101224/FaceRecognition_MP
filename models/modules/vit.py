@@ -477,7 +477,7 @@ class VisionTransformer(nn.Module):
         x, x1 = self.forward_features(x)
         x = self.se_block(x)
         # x[B,768]   x1[B,7]
-        x = self.head(x)
+        #x = self.head(x)
 
 
         return x, x1

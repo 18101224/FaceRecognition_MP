@@ -121,6 +121,15 @@ class FER_KFOLD(FER):
         result = torch.cat((torch.tensor(self.val_idx),torch.tensor([self.fold_idx]*len(self.val_idx)))) #deterministic. 
         return result
 
+class FER_uni(FER):
+    def __init__(self,args, transform, train, idx, c):
+        super().__init__(args, transform, train, idx)
+        indices = self.labels[self.labels == c]
+        self.paths = self.paths[indices.tolist()]
+        self.labels = self.labels[indices]
+    
+    def __len__(self):
+        return len(self.labels)
 
 class ClassBatchSampler(FER) : 
     def __init__(self,args,transform,train=True, idx=True, balanced=False):

@@ -17,7 +17,44 @@ from datetime import timedelta
 from models import ImbalancedModel
 from torchvision.utils import save_image
 from collections import defaultdict
+from Loss import KCL, Moco
+from models import compute_class_spherical_means,calc_class_mean, slerp
+from models import dim_dict
+from copy import deepcopy
 
+
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    if not dist.is_available() or not dist.is_initialized():
+        return tensor
+    
+    tensors_gather = [torch.zeros_like(tensor) for _ in range(dist.get_world_size())]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+    output = torch.cat(tensors_gather, dim=0)
+    return output
+
+
+
+def init_kcl(args, model,dataloader):
+    if (args.mean_weight is not None and not os.path.exists(os.path.join(args.mean_weight, 'init_queue.pth'))) :
+        mean = compute_class_spherical_means(dataloader, model, device=torch.device('cuda'), num_classes=7, subset=args.moco_k)
+        dist.all_reduce(mean, op=dist.ReduceOp.AVG) if args.world_size > 1 else None
+        os.makedirs(args.mean_weight, exist_ok=True) if (args.world_size==1 or args.rank==0) else None 
+        torch.save(mean, os.path.join(args.mean_weight, 'init_queue.pth')) if (args.world_size==1 or args.rank==0) else None 
+        dist.barrier() if args.world_size > 1 else None 
+
+    elif args.mean_weight is not None:
+        mean = torch.load(os.path.join(args.mean_weight, 'init_queue.pth'), weights_only=False, map_location=torch.device('cpu'))
+    init_queue = mean if args.mean_weight is not None else None
+    moco = Moco(args, deepcopy(model).cuda(), num_classes=7, init_queue=init_queue, dim=dim_dict[args.model_type][0])
+    kcl = KCL(temperature=args.temperature, include_positives_in_denominator=args.include_positives_in_denominator,
+     exclude_same_class_from_negatives=args.exclude_same_class_from_negatives,
+    use_batch_negatives=args.use_batch_negatives)
+    return moco, kcl, 
 
 def get_optimizer(model, args):
     opt = SAM(model.parameters(),base_optimizer=torch.optim.AdamW,lr=args.learning_rate,weight_decay=1e-4)
@@ -29,34 +66,48 @@ def get_loaders(args):
     valid_transform = get_fer_transforms(train=False)
     train_dataset = FER(args=args, train=True, transform=train_transform, idx=True)
     valid_dataset = FER(args=args, train=False, transform=valid_transform, idx=True)
+    train_dataset_wo_aug = FER(args=args, train=True, transform=valid_transform, idx=False, balanced=False)
     if args.world_size > 1 : 
         train_sampler = DistributedSampler(train_dataset, shuffle=True) if not args.use_sampler \
             else DistributedSamplerWrapper(ImbalancedDatasetSampler(train_dataset, labels=train_dataset.labels), shuffle=True)
         valid_sampler = DistributedSampler(valid_dataset, shuffle=False)
+        train_sampler_wo_aug = DistributedSampler(train_dataset_wo_aug, shuffle=True)
     else:
         train_sampler  = ImbalancedDatasetSampler(train_dataset, labels=train_dataset.labels) if args.use_sampler else None
         valid_sampler = None
+        train_sampler_wo_aug = None
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=args.num_workers, pin_memory=True)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, sampler=valid_sampler, num_workers=args.num_workers, pin_memory=True)
-    return train_loader, valid_loader
+    train_loader_wo_aug = DataLoader(train_dataset_wo_aug, batch_size=args.batch_size, sampler=train_sampler_wo_aug,shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    return train_loader, valid_loader, train_loader_wo_aug
 
 def get_model(args):
     model =  ImbalancedModel(num_classes=7, model_type=args.model_type, feature_branch=False, 
-    feature_module=False, regular_simplex=False, cos=True, decomposition=args.decomposition, learnable_input_dist=True, input_layer=False,
+    feature_module=False, regular_simplex=False, cos=True, decomposition=args.decomposition, learnable_input_dist=False, input_layer=False,
     freeze_backbone=False, remain_backbone=False)
     return model.cuda() if args.world_size ==1 else DDP(model.cuda(), device_ids=[args.local_rank], find_unused_parameters=True)
 
 def get_args():
     args = ArgumentParser()
+
+    # moco args 
+    args.add_argument('--moco_k', type=int)
+    args.add_argument('--temperature', type=float)
+    args.add_argument('--include_positives_in_denominator', default=False)
+    args.add_argument('--exclude_same_class_from_negatives', default=False)
+    args.add_argument('--use_batch_negatives', default=False)
+    
     # model args 
     args.add_argument('--model_type', choices=['ir50', 'kp_rpe'])
-    
+    args.add_argument('--mean_weight', default=None,)
+
     # dataset_args 
     args.add_argument('--dataset_name', choices=['RAF-DB', 'AffectNet'])
     args.add_argument('--dataset_path', type=str)
+    args.add_argument('--num_classes', type=int, default=7)
 
     # research args 
-    args.add_argument('--id_strategy', choices=['FR-clustering', 'masking'])
+    args.add_argument('--id_strategy', choices=['FR-clustering', 'masking'], default=None)
     args.add_argument('--n_blocks', type=int, default=10)
     args.add_argument('--detach_lowlevel', default=False)
     args.add_argument('--beta', type=float )
@@ -64,6 +115,8 @@ def get_args():
     args.add_argument('--include_backbone', default=False)
     args.add_argument('--anchor_mask', default=False)
     args.add_argument('--decomposition', choices=['Cayley',], default=False)
+    args.add_argument('--loss', choices=['CE', 'KCL', 'KBCL'], default='CE')
+    args.add_argument('--kcl_k', type=int, default=1)
 
     # training_args 
     args.add_argument('--learning_rate', type=float)
@@ -104,10 +157,21 @@ class Trainer:
         self.args = args 
         self.aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if args.model_type == 'kp_rpe' or args.id_strategy == 'masking' else None
         self.model = get_model(args)
-        self.train_loader, self.valid_loader = get_loaders(args)
+        self.train_loader, self.valid_loader, self.train_loader_wo_aug = get_loaders(args)
         self.init_logs()
-
         self.opt, self.scheduler = get_optimizer(self.model, self.args)
+        if self.args.loss in ['KCL', 'KBCL']:
+            self.moco, self.kcl = init_kcl(self.args, self.model.backbone if self.args.world_size==1 else self.model.module.backbone, self.train_loader_wo_aug)
+            mean = compute_class_spherical_means(loader=self.train_loader_wo_aug, model=self.model.backbone if self.args.world_size==1 else \
+                self.model.module.backbone, device=torch.device('cuda'), num_classes=7)
+            dist.all_reduce(mean, op=dist.ReduceOp.AVG) if self.args.world_size > 1 else None
+            self.mean = torch.nn.functional.normalize(mean, dim=1)
+            print(self.mean.shape)
+            if self.args.world_size==1 or self.args.rank ==0 :
+                torch.save(self.mean, os.path.join(self.args.mean_weight, 'class_mean.pth'))
+            dist.barrier() if args.world_size > 1 else None 
+            to_change = self.model if args.world_size == 1 else self.model.module 
+            to_change.weight.data = self.mean.T 
 
         
     def init_logs(self,):
@@ -143,8 +207,25 @@ class Trainer:
             return anchor_img, neg_img 
         elif self.args.id_strategy == 'FR-clustering':
             raise NotImplementedError
-        else:
-            raise NotImplementedError
+
+    # def measure_loss(self,model, l1, l2):
+    #     dict_grad_norms  ={}
+    #     dict_cosine_sims = {}
+    #     grad_backup = {}
+
+    #     for name, param in model.named_parameters():
+    #         if param.requires_grad:
+    #             if param.grad is not None:
+    #                 grad_backup[name] = param.grad.clone()
+    #             param.grad = None 
+            
+    #     l1.backward(retain_graph=True)
+    #     grad_loss1 = {}
+    #     for name, param in model.named_parameters():
+    #         if param.requires_grad:
+    #             grad_loss1[name] = param.grad.clone() if param.grad is not None else None
+        
+    #     for
 
     def backp(self, ce_loss, fr_loss):
         to_backp = self.model.module if self.args.world_size > 1 else self.model
@@ -161,18 +242,36 @@ class Trainer:
 
 
     def run_train_forward(self, img, label):
-        img = img.cuda() # masking 등이 없는 img 임. 
-        label = label.cuda()
+        img = img.detach().cuda() # masking 등이 없는 img 임. 
+        label = label.detach().cuda()
         bs = label.shape[0]
         ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None
-        anchor_img, neg_img = self.transform(img, ldmk) 
-        entire = torch.concat([anchor_img, neg_img], dim=0)
-        entire_ldmk = ldmk.repeat(2,1,1) if (ldmk is not None and self.args.model_type == 'kp_rpe') else None
-        logits, fer_features, fr_features = self.model(entire, keypoint=entire_ldmk, features=True)
-        anchor_fr_features, neg_fr_features = torch.split(fr_features, [bs,bs],dim=0)
-        logits, _ = torch.split(logits, [bs,bs],dim=0)
-        ce_loss = torch.nn.functional.cross_entropy(logits,label)
-        fr_loss = compute_adv_loss(anchor_fr_features, neg_fr_features)
+        if self.args.loss not in ['KCL', 'KBCL']:
+            anchor_img, neg_img = self.transform(img, ldmk) 
+            entire = torch.concat([anchor_img, neg_img], dim=0)
+            entire_ldmk = ldmk.repeat(2,1,1) if (ldmk is not None and self.args.model_type == 'kp_rpe') else None
+            logits, fer_features, fr_features = self.model(entire, keypoint=entire_ldmk, features=True)
+            anchor_fr_features, neg_fr_features = torch.split(fr_features, [bs,bs],dim=0)
+            logits, _ = torch.split(logits, [bs,bs],dim=0)
+            ce_loss = torch.nn.functional.cross_entropy(logits,label)
+            fr_loss = compute_adv_loss(anchor_fr_features, neg_fr_features)
+        else:
+            logits, features, centers = self.model(img, keypoint=ldmk, features=True)
+            features_to_mean = concat_all_gather(features) if self.args.world_size > 1 else features
+            labels_to_mean = concat_all_gather(label) if self.args.world_size > 1 else label
+            temp_mean, temp_mask = calc_class_mean(features_to_mean, labels_to_mean, self.args.num_classes)
+            temp_mean = slerp(self.mean[temp_mask==True].detach(), temp_mean[temp_mask==True], 0.001)
+            now_mean = self.mean.clone().detach()
+            now_mean[temp_mask==True] = temp_mean 
+            self.mean[temp_mask==True] = now_mean[temp_mask==True]
+            ce_loss = torch.nn.functional.cross_entropy(logits,label)
+            features = torch.cat([features, now_mean, centers], dim=0)
+            label = torch.cat( [label, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2)] , dim=0)
+            k_features, k_labels = self.moco.get_k(label, self.args.kcl_k)
+            fr_loss = self.kcl(features, label, k_features, k_labels)
+            # add weight and class mean 
+
+            
         return ce_loss, self.args.beta*fr_loss, logits 
     
     @torch.no_grad()
@@ -202,14 +301,26 @@ class Trainer:
 
         for img, label, idx in tqdm(self.train_loader, disable=self.args.world_size > 1 and self.args.rank != 0):
             self.model.zero_grad()
+
             ce_loss, fr_loss, logits = self.run_train_forward(img,label)
-            self.backp(ce_loss, fr_loss)
-            self.opt.first_step(zero_grad=True)
+            if self.args.loss in ['KCL', 'KBCL']:
+                (ce_loss+fr_loss).backward()
+                self.opt.first_step(zero_grad=True)
+            else:
+                self.backp(ce_loss, fr_loss)
+                self.opt.first_step(zero_grad=True)
+                
             ce_loss, fr_loss, logits = self.run_train_forward(img,label)
-            cos_sims, norms_ce, norms_fr = self.backp(ce_loss, fr_loss)
-            if self.args.measure_grad and (args.world_size > 1 or args.rank == 0):
-                self.add_log(cos_sims, norms_ce, norms_fr)
-            self.opt.second_step(zero_grad=True)
+            if self.args.loss in ['KCL', 'KBCL']:
+                (ce_loss+fr_loss).backward()
+                self.opt.second_step(zero_grad=True)
+                self.moco.momentum_update(self.model.backbone if self.args.world_size==1 else self.model.module.backbone)
+                self.moco.enqueue(img.cuda(),label.cuda(),ldmks=None)
+            else:
+                cos_sims, norms_ce, norms_fr = self.backp(ce_loss, fr_loss)
+                if self.args.measure_grad and (args.world_size > 1 or args.rank == 0):
+                    self.add_log(cos_sims, norms_ce, norms_fr)
+                self.opt.second_step(zero_grad=True)
             bs = label.shape[0]
             total_ce_loss += ce_loss.detach().item() * bs
             total_fr_loss += fr_loss.detach().item() * bs

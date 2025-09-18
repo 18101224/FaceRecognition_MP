@@ -1,12 +1,5 @@
-#!/bin/bash
-
-LEARNING_RATES=(0.01 0.05 )
-#LEARNING_RATES=(0.001 0.005)
-for LR in "${LEARNING_RATES[@]}"; do
-CUDA_VISIBLE_DEVICES=0 python3 OOS_pretraining.py --world_size=1 \
-                            --dataset_path=../data/clothing1m --dataset_name=clothing1m --random_seed=566 \
-                            --learning_rate=$LR --batch_size=128 --n_epochs=80 --wandb_token=../wandb.txt --server=7 \
-                            --architecture=resnext50 --num_classes=14 --cos_constant_margin=0.5 --n_folds=5 --weight_decay=5e-2 --pretrained=True
-done
-
-python3 -c "from utils import send_message; send_message('Clothing1M Pretraining finished')"
+CUDA_VISIBLE_DEVICES=0 python3 MoCo.py --world_size=1 --use_tf=True --num_workers=32 \
+--learning_rate=1e-5 --batch_size=64 --n_epochs=200 --weight_decay=5e-4 \
+--dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True \
+--model_type=kp_rpe \
+--loss=CE

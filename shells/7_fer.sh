@@ -1,13 +1,5 @@
-
-
-CUDA_VISIBLE_DEVICES=0 python3 QCS_hcm.py \
-  --dataset_path=../data/RAF-DB_balanced \
-  --dataset_name=RAF-DB \
-  --guide_path=checkpoint/pme3c5fe43-a9ec-4a37-8ea4-f11268a0ec6e \
-  --num_workers=32 \
-  --world_size=1 \
-  --batch_size=4 \
-  --n_epochs=200 \
-  --learning_rate=1e-4 \
-  --use_sampler=True \
-  --model_type=kp_rpe --loss=HCM --cl_weight=0.3 
+CUDA_VISIBLE_DEVICES=0 python3 MoCo.py --learning_rate=1e-5 --batch_size=64 --n_epochs=200 --world_size=1 --num_workers=32 --weight_decay=5e-4 \
+--dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True \
+--mean_weight=checkpoint/kprpe_256K_means \
+--model_type=kp_rpe \
+--loss=KBCL --kcl_k=5 --beta=0.3 --temperature=0.1 --utilze_class_centers=True --moco_k=256

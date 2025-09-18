@@ -9,6 +9,9 @@ from .ir50 import Backbone
 import sys;sys.path.extend('..')
 from ..kp_rpe import get_kprpe_pretrained
 
+
+__all__ = ['get_QCS_model', 'get_QCS_model_single']
+
 class Mlp(nn.Module):
     """
     MLP as used in Vision Transformer, MLP-Mixer and related networks
@@ -37,6 +40,14 @@ def get_QCS_model(backbone_type,dim, num_classes):
     }
     backbone = backbone_dict[backbone_type][0]()
     return Pyramid(embed_dim=dim, num_classes=num_classes, dims=backbone_dict[backbone_type][1], backbone=backbone)
+
+def get_QCS_model_single(backbone_type,dim, num_classes):
+    backbone_dict={
+        'ir50':(partial(Backbone,checkpoint_path='checkpoint/ir50.pth'),[64,128,256]),
+        'kp_rpe':(partial(get_kprpe_pretrained,cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m'),[512,1024,256])
+    }
+    backbone = backbone_dict[backbone_type][0]()
+    return Pyramid_single(embed_dim=dim, num_classes=num_classes, dims=backbone_dict[backbone_type][1], backbone=backbone)
 
 
 def Attn_QCS_SD(anchor, positive, neg1, neg2, k, alpha):
@@ -182,7 +193,7 @@ class Pyramid(nn.Module):
 
 
     def process_convs(self,x):
-        features = list(self.ir_back(x)[-1])
+        features = self.ir_back(x)[-1]
         features = [self.convs[i](features[i]) for i in range(3)]
         features = [self.embeds[i](features[i]).flatten(2).transpose(1, 2) if i<=1 else self.embeds[i](features[i]) for i in range(3)]
         out = torch.cat(features, dim=1)
@@ -234,3 +245,14 @@ class Pyramid(nn.Module):
         out_n2 = self.ViT_cross(x_n2_0)[0] #vit 넣으면 알아서 저거 됨.classification 
     
         return x_a,x_p,x_n,x_n2, out_a, out_p, out_n, out_n2
+
+class Pyramid_single(Pyramid):
+    def __init__(self, embed_dim, num_classes, backbone, dims=[]):
+        super().__init__(embed_dim, num_classes, backbone, dims)
+    
+    def forward(self,x, features=True, keypoint=None):
+        cls_token, patches = self.process_convs(x)
+        if features : 
+            return cls_token, patches 
+        else:
+            return cls_token

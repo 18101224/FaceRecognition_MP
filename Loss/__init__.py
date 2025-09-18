@@ -5,7 +5,11 @@ from .angleLoss import get_angle_loss
 from .OOS_LNAAL import *
 from .Imbalanced import *
 from .FER import HCM
-__all__ = ['Proportion_loss', 'cosine_constant_margin_loss', 'get_label_noise', 'including_margin', 'get_angle_loss', 'get_confidence_db', 'get_instant_margin', 'apply_margin', 'BalSCL', 'BCLLoss', 'ECELoss', 'HCM']
+from .CL import KCL, Moco
+
+__all__ = ['Proportion_loss', 'cosine_constant_margin_loss', 'get_label_noise', 
+'including_margin', 'get_angle_loss', 'get_confidence_db', 'get_instant_margin', 
+'apply_margin', 'BalSCL', 'BCLLoss', 'ECELoss', 'HCM', 'KCL', 'Moco']
 
 class Proportion_loss:
     def __init__(self, labels, alpha,device):

@@ -1,4 +1,7 @@
 import torch
+from torch import distributed as dist
+
+__all__ = ['slerp', 'compute_class_spherical_means', 'calc_class_mean']
 
 # ---------- 기본 유틸 ----------
 def normalize(x, dim=-1, eps=1e-8):
@@ -113,6 +116,21 @@ def spherical_frechet_mean(X, w=None, max_iter=50, step_size=1.0, tol=1e-6, eps=
 
     return normalize(m, dim=-1)
 
+def calc_class_mean(X,y, num_classes):
+    '''
+    X : (N, D) unit vectors
+    y : (N,) labels
+    return : (num_classes, D) unit vectors
+    '''
+    mean = torch.zeros((num_classes, X.shape[1]), device=X.device, dtype=X.dtype)
+    for c in range(num_classes):
+        mask = (y == c)
+        X_c = X[mask]
+        mean_c = spherical_frechet_mean(X_c)
+        mean[c] = mean_c
+    mask = torch.zeros((num_classes), dtype=torch.bool, device=X.device)
+    mask[y.unique()] = True
+    return mean, mask 
 
 def _extract_batch_from_loader_item(loader_item):
     """
@@ -133,12 +151,14 @@ def _extract_batch_from_loader_item(loader_item):
 def compute_class_spherical_means(
     loader,
     model,
+    aligner=None,
     device=None,
     num_classes=None,
     max_iter=50,
     step_size=1.0,
     tol=1e-6,
     eps=1e-7,
+    subset=False
 ):
     """
     Compute per-class spherical Fréchet means from features produced by model over a DataLoader.
@@ -170,12 +190,15 @@ def compute_class_spherical_means(
         images, labels = _extract_batch_from_loader_item(batch)
         images = images.to(device)
         labels = labels.to(device)
-
+        if aligner is not None:
+            _,_,ldmk,_,_,_ = aligner(images)
+        else:
+            ldmk = None
         # Try preferred interface: features=True
         try:
-            outputs = model(images, features=True)
+            outputs = model(images, features=True, keypoint=ldmk)
             if isinstance(outputs, (list, tuple)):
-                features = outputs[0]
+                features = outputs[1]
             else:
                 features = outputs
         except TypeError:
@@ -208,6 +231,37 @@ def compute_class_spherical_means(
         # Normalize to lie on the unit sphere
         features = normalize(features, dim=-1)
 
+        # If running under DDP, gather features and labels across ranks
+        if dist.is_available() and dist.is_initialized():
+            world_size = dist.get_world_size()
+            # Gather batch sizes to handle variable last batches
+            local_bs = torch.tensor([features.shape[0]], device=features.device, dtype=torch.int64)
+            bs_list = [torch.zeros_like(local_bs) for _ in range(world_size)]
+            dist.all_gather(bs_list, local_bs)
+            max_bs = int(torch.stack(bs_list).max().item())
+
+            # Pad to max_bs
+            pad = max_bs - features.shape[0]
+            if pad > 0:
+                pad_feats = torch.zeros((pad, features.shape[1]), device=features.device, dtype=features.dtype)
+                pad_labels = torch.full((pad,), -1, device=labels.device, dtype=labels.dtype)
+                features_p = torch.cat([features, pad_feats], dim=0)
+                labels_p = torch.cat([labels, pad_labels], dim=0) # padded tensor 를 만드신다. 
+            else:
+                features_p = features
+                labels_p = labels
+
+            gathered_feats = [torch.zeros_like(features_p) for _ in range(world_size)]
+            gathered_labels = [torch.zeros_like(labels_p) for _ in range(world_size)]
+            dist.all_gather(gathered_feats, features_p)
+            dist.all_gather(gathered_labels, labels_p)
+
+            features = torch.cat(gathered_feats, dim=0)
+            labels = torch.cat(gathered_labels, dim=0)
+            valid = labels != -1
+            features = features[valid]
+            labels = labels[valid] # remove padded labels 
+
         if feature_dim is None:
             feature_dim = features.shape[1]
 
@@ -221,7 +275,7 @@ def compute_class_spherical_means(
                 class_to_features[c] = [feats_c.detach().cpu()]
             else:
                 class_to_features[c].append(feats_c.detach().cpu())
-
+    
     # Determine num_classes if not provided
     if num_classes is None:
         num_classes = (max(class_to_features.keys()) + 1) if class_to_features else 0
@@ -230,15 +284,26 @@ def compute_class_spherical_means(
     means = []
     for c in range(num_classes):
         if c in class_to_features:
-            X = torch.cat(class_to_features[c], dim=0).to(device)
-            mean_c = spherical_frechet_mean(X, w=None, max_iter=max_iter, step_size=step_size, tol=tol, eps=eps)
-            means.append(mean_c.detach().cpu())
+            if subset is not False: 
+                temp = []
+                for i in range(subset):
+                    perm = torch.randperm(len(class_to_features[c]))
+                    selected_indices = perm[:64].tolist()  # Convert tensor to list
+                    X = torch.cat([class_to_features[c][i] for i in selected_indices], dim=0).to(device)
+                    mean_c = spherical_frechet_mean(X, w=None, max_iter=max_iter, step_size=step_size, tol=tol, eps=eps)
+                    temp.append(mean_c.detach())
+                means.append(torch.stack(temp, dim=0))
+            else:
+                X = torch.cat(class_to_features[c], dim=0).to(device)
+                mean_c = spherical_frechet_mean(X, w=None, max_iter=max_iter, step_size=step_size, tol=tol, eps=eps)
+                means.append(mean_c.detach())
         else:
             # If class not observed, use zero vector placeholder with correct dim
             means.append(torch.zeros(feature_dim if feature_dim is not None else 0))
 
-    means = torch.stack(means, dim=0) if len(means) > 0 else torch.empty(0)
 
+    means = torch.stack(means, dim=0) if len(means) > 0 else torch.empty(0)
+        
     if model_was_training:
         model.train()
 

@@ -1,3 +1,4 @@
+from sympy.logic.boolalg import true
 import torch
 import torch.distributed as dist
 import time
@@ -16,13 +17,10 @@ from opt import SAM, WarmupCosineAdamW
 import wandb,os,pickle,aligners
 from models import make_g_nets, load_g_nets, CosClassifier
 from Loss.OOS_LNAAL import get_confidence_db, get_instant_margin, apply_margin
-from datetime import timedelta, datetime
+from datetime import timedelta
 from functools import partial
+from utils import get_exp_id
 
-def get_exp_id(args):
-    now = datetime.now()
-    exp_id = args.server+now.strftime('%m%d%H%M%S%f')[:12]  # mmddhhmmssmm
-    return exp_id
 
 def get_optimizer(args):
     if args.dataset_name in ['AffectNet', 'RAF-DB']:
@@ -64,8 +62,8 @@ def get_args():
     args.add_argument('--num_classes',type=int)
 
     args.add_argument('--instance_ada_loss',default=False)
-    args.add_argument('--cos_constant_margin',type=float)
-    args.add_argument('--confidence_constant',type=float)
+    args.add_argument('--cos_constant_margin',type=float, default=0.0)
+    args.add_argument('--confidence_constant',type=float, default=0.0)
     args.add_argument('--cos_scaling',type=float, default=1)
     args.add_argument('--as_bias',default=False)
 
@@ -100,7 +98,11 @@ def get_args():
         torch.backends.cuda.matmul.allow_tf32 = True 
         torch.backends.cudnn.allow_tf32 = True 
         torch.backends.cudnn.benchmark = True 
-        
+    if args.world_size == 1 or args.rank == 0:
+        print('--------------------------------')
+        for name, value in args.__dict__.items():
+            print(f"{name}: {value}")
+        print('--------------------------------')
     return args
 
 class Trainer :
@@ -152,7 +154,7 @@ class Trainer :
         self.opt = get_optimizer(args)(self.model.parameters() if args.world_size == 1 else self.model.module.parameters())
         self.scheduler = get_scheduler(args)(self.opt) if get_scheduler(args) is not None else None
 
-        if args.instance_ada_loss or args.cos_margin_loss:
+        if args.instance_ada_loss :
             self.g_nets = make_g_nets(args, self.device, freeze=True)
             self.g_nets = load_g_nets(self.g_nets, args.g_net_ckpt, self.device)
             if not args.g_net_dropout:
@@ -193,19 +195,17 @@ class Trainer :
                     dist.barrier()
                     torch.distributed.broadcast(self.conf_db, src=0)
                     dist.barrier()
-        print(f'dataset length : {len(self.train_set)} confdb_shape : {self.conf_db.shape}')
+            print(f'dataset length : {len(self.train_set)} confdb_shape : {self.conf_db.shape}')
         self.best = -1e10
         if args.training_checkpoint is not None : 
             self.load_checkpoint()
         else:
             self.start_epoch = 0
 
-        print(f"self.conf_db.shape: {self.conf_db.shape}")
         if args.world_size == 1 or args.rank == 0:
             self.id = get_exp_id(args)
             self._init_wandb()
             self.log = []
-            print("self.conf_db.shape: ", self.conf_db.shape, "dataset size :", len(self.train_set))
             if not os.path.exists(f'checkpoint/{self.id}'):
                 os.makedirs(f'checkpoint/{self.id}',exist_ok=True)
 
@@ -232,16 +232,17 @@ class Trainer :
         )
     
 
-    def run_train_forward(self,img,label,ldmk,c):
+    def run_train_forward(self,img,label,ldmk,c=None):
         if ldmk is not None:
             pred = self.model(img, ldmk)
         else:
             pred = self.model(img)
         if self.args.instance_ada_loss:
             j = get_instant_margin(c,label)
-            pred = apply_margin(pred,label,j,self.args.confidence_constant,self.args.as_bias)
-            pred = self.args.cos_scaling * pred 
-        loss = torch.nn.functional.cross_entropy(pred,label)
+            pred_for_loss = self.args.cos_scaling*apply_margin(pred,label,j,self.args.confidence_constant,self.args.as_bias)
+        else: 
+            pred_for_loss = apply_margin(pred,label,j=self.args.cos_constant_margin, m=1, as_bias=True)
+        loss = torch.nn.functional.cross_entropy(pred_for_loss,label)
         return loss, pred 
 
 
@@ -252,7 +253,7 @@ class Trainer :
             self.model.zero_grad()
             img = img.to(self.device)
             label = label.to(self.device)
-            c = self.conf_db[idx].to(self.device)
+            c = self.conf_db[idx].to(self.device) if self.args.instance_ada_loss else None
             bs = label.shape[0]
             if self.aligner is not None:
                 with torch.no_grad():

@@ -14,12 +14,14 @@ from .eval_quality import *
 from .pushover import send_message
 from .epx_log import get_exp_id
 from .interpolation import calculate_class_centers, slerp_ema
-from .DDP import sync_scalar
+from .DDP import sync_scalar, concat_all_gather
 from .visualize import crop_to_square_grid
 from facenet_pytorch import MTCNN
+from .grad import measure_grad
+
 __all__ = ['get_acc', 'get_macro_acc', 'get_norm', 'get_pd', 'save_pd', 'save_pkl', 
 'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload', 'get_grads',
- 'calculate_class_centers', 'slerp_ema', 'sync_scalar', 'get_ldmk', 'crop_to_square_grid']
+ 'calculate_class_centers', 'slerp_ema', 'sync_scalar', 'concat_all_gather', 'get_ldmk', 'crop_to_square_grid', 'get_exp_id', 'measure_grad']
 
 def get_grads(obj):
     """
@@ -69,7 +71,7 @@ def get_acc(x,y):
     '''
     :param x: bs, num_classes // gpu 
     :param y: bs // gpu 
-    :return: scalar
+    :return: scalar that is averaged
     '''
     _,pred = torch.max(x,dim=-1)
     bs = x.shape[0]

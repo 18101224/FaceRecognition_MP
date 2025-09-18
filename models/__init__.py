@@ -4,6 +4,7 @@ from .modules import DeepComplexModule, ResidualModule
 from .modules import resnet32_backbone, resnet50_backbone, resnext50_backbone
 from .modules import e2_resnet32, e2_resnext50
 from .modules import OrthogonalDecomposer
+from .modules import get_QCS_model_single
 #from .modules import Combiner, multi_network, multi_network_MOCO
 from copy import deepcopy
 from torch import nn
@@ -17,13 +18,15 @@ from functools import partial
 from .kp_rpe import get_kprpe_pretrained
 import torch 
 from .modules import get_mfnet, vit_small_patch16, vit_base_patch16, vit_large_patch16, vit_huge_patch14
+from .utils import compute_class_spherical_means, slerp, calc_class_mean
+
 __all__ = ['get_ir', 'kprpe_fer',
  'make_g_nets', 'ImbalancedModel',
   'get_noise_model', 'ir50_backbone',
    'get_model', 'get_kprpe_pretrained', 
    'get_mfnet', 'vit_small_patch16', 
    'vit_base_patch16', 'vit_large_patch16',
-    'vit_huge_patch14']
+    'vit_huge_patch14', 'compute_class_spherical_means', 'slerp', 'calc_class_mean', 'dim_dict']
 
 
 model_dict = {
@@ -39,7 +42,7 @@ model_dict = {
         f'ir50_{i}': partial(Parital_Backbone, checkpoint_path='checkpoint/ir50.pth', to_What=i) for i in range(1,4)
     },
     'fmae_small': partial(vit_small_patch16, ckpt_path='checkpoint/FMAE_ViT_small.pth'),
-
+    'Pyramid_ir50': partial(get_QCS_model_single, backbone_type='ir50', dim=768, num_classes=7),
 }
 dim_dict = {
     'resnet32_64d': (64, 512, 128),
@@ -53,7 +56,8 @@ dim_dict = {
     **{
         f'ir50_{i}': (dim_in, mid_dim, feat_dim) for i, dim_in, mid_dim, feat_dim in zip(list(range(1,4)), [64,128,256], [128,512,256], [256,1048,512])
     },
-    'fmae_small': (384, 1024, 512)
+    'fmae_small': (384, 1024, 512),
+    'Pyramid_ir50': (768, 1024, 256)
 }
 
 if True : 
@@ -193,7 +197,7 @@ class ImbalancedModel(nn.Module):
     def __init__(self, num_classes, model_type: str, feature_branch=False, feature_module=False,  
     regular_simplex=False, cos=True
     , learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False,
-    decomposition=False):
+    decomposition=False,):
         global model_dict, dim_dict
         if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
@@ -225,18 +229,6 @@ class ImbalancedModel(nn.Module):
         self.weight = nn.Parameter(self.weight, requires_grad=True) # weight is dim, num_classes
 
 
-        targets = []
-        if self.feature_branch:
-            targets.extend([self.head, self.head_fc])
-        if self.feature_module:
-            targets.append(self.feature_module)
-        if model_type not in ['kp_rpe', 'ir50']:
-            targets.append(self.backbone)
-        for t in targets:
-            if t is not None:
-                for m in t.modules():
-                    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                        nn.init.kaiming_normal_(m.weight)
         if learnable_input_dist:
             init_input_dist = torch.cat([torch.zeros((1,3)), torch.ones((1,3))], dim=0)
             self.input_dist = nn.Parameter(init_input_dist, requires_grad=True)
@@ -245,6 +237,7 @@ class ImbalancedModel(nn.Module):
         self.freeze = freeze_backbone
 
         self.decomposition = OrthogonalDecomposer(dim_in) if decomposition=='Cayley' else None
+
 
     def freeze_backbone(self):
         for p in self.backbone.parameters():
@@ -282,6 +275,8 @@ class ImbalancedModel(nn.Module):
 
         z_ = nn.functional.normalize(self.feature_module(z), dim=-1, eps=1e-6) if self.feature_module is not False else z 
 
+
+        ### if adversarial training 
         if getattr(self, 'decomposition', None) is not None:
             z1, z2 = self.decomposition(z_)
             z1 = nn.functional.normalize(z1, dim=-1)
@@ -291,20 +286,16 @@ class ImbalancedModel(nn.Module):
                 return logit, z1, z2
             else:  
                 return logit
-        else:
-            logit = z_ @ self.get_kernel()
-            if features : 
-                return logit, z_, z_
-            else:
-                return logit 
+
         
         weight = self.get_kernel() # dim, num_classes
         logit = z_ @ weight
 
+        # if CL training 
         if features : 
             centers = nn.functional.normalize(self.head_fc(weight.T), dim=-1) if self.feature_branch else weight.T
             processed_feat = nn.functional.normalize(self.head(z_), dim=-1) if self.feature_branch else z_
-            return processed_feat, logit, centers 
+            return logit, processed_feat , centers 
         else:
             return logit 
     

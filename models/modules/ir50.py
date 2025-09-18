@@ -201,7 +201,7 @@ class Backbone(Module):
         except Exception as e :
             raise ValueError(f'IR50 pretrained weight not found {e}')
 
-    def forward(self, x):
+    def forward(self, x, ldmk=None):
         x = F.interpolate(x, size=112)
         x = self.input_layer(x)
         x1 = self.body1(x)
