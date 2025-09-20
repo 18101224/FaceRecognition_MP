@@ -229,7 +229,9 @@ def get_clothing1m_transforms(train):
             transforms.Normalize(mean=mean, std=std)
         ])
 
-def get_fer_transforms(train,):
+def get_fer_transforms(train,model_type):
+    mean=[0.485, 0.456, 0.406] if 'kprpe' not in model_type else [0.5] * 3
+    std=[0.229, 0.224, 0.225] if 'kprpe' not in model_type else [0.5] * 3
     if train :
         return transforms.Compose([
             transforms.Resize((112, 112)),
@@ -237,13 +239,13 @@ def get_fer_transforms(train,):
             transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
             transforms.RandomRotation(15),
             transforms.ToTensor(),
-            transforms.Normalize([0.5] * 3, [0.5] * 3)
+            transforms.Normalize(mean=mean, std=std)
         ])
     else : 
         return transforms.Compose([
             transforms.Resize((112, 112)),
             transforms.ToTensor(),
-            transforms.Normalize([0.5] * 3, [0.5] * 3)
+            transforms.Normalize(mean=mean, std=std)
         ])
 
 def gaussian_prob(distance, sigma=1.5):

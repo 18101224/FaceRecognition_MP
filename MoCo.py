@@ -35,12 +35,12 @@ def get_model(args):
         'img_size': args.img_size
     }
     model = ImbalancedModel(**model_params)
-    aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if args.model_type == 'kp_rpe' else None
+    aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if 'kprpe' in args.model_type else None
     return model.cuda() if args.world_size ==1 else DDP(model.cuda(), device_ids=[args.local_rank], find_unused_parameters=True), \
          aligner, model_params
 
 def get_loaders(args):
-    train_transform, valid_transform, train_transform_wo_aug = get_fer_transforms(train=True), get_fer_transforms(train=False), get_fer_transforms(train=False)
+    train_transform, valid_transform, train_transform_wo_aug = get_fer_transforms(train=True,model_type=args.model_type), get_fer_transforms(train=False,model_type=args.model_type), get_fer_transforms(train=False,model_type=args.model_type)
     train_dataset, valid_dataset, train_dataset_wo_aug = FER(args=args, train=True, transform=train_transform, idx=False), FER(args=args, train=False, transform=valid_transform, idx=False), FER(args=args, train=False, transform=train_transform_wo_aug, idx=False, balanced=False)
     if args.world_size > 1 :
         if args.use_sampler :
@@ -99,7 +99,7 @@ def get_args():
     args.add_argument('--mean_weight', type=str, default=None)
     
     # model info 
-    args.add_argument('--model_type', type=str, choices=['ir50', 'kp_rpe', 'fmae_small', 'Pyramid_ir50'], required=True)
+    args.add_argument('--model_type', type=str, choices=['ir50', 'kprpe12m', 'kprpe4m', 'fmae_small', 'Pyramid_ir50'], required=True)
     args.add_argument('--feature_branch', default=False)
     args.add_argument('--feature_module', default=False, help='deepcomplex_depth, residual_depth')
 

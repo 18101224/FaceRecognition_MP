@@ -37,7 +37,8 @@ model_dict = {
     'ir50': partial(ir50_backbone, checkpoint_path='checkpoint/ir50.pth'),
     'e2_resnet32': e2_resnet32,
     'e2_resnext50': e2_resnext50,
-    'kp_rpe': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m'),
+    'kprpe12m': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface12m'),
+    'kprpe4m': partial(get_kprpe_pretrained, cfg_path='checkpoint/adaface_vit_base_kprpe_webface4m'),
     **{
         f'ir50_{i}': partial(Parital_Backbone, checkpoint_path='checkpoint/ir50.pth', to_What=i) for i in range(1,4)
     },
@@ -52,7 +53,8 @@ dim_dict = {
     'ir50': (256, 512, 128),
     'e2_resnet32': (256, 256, 128),
     'e2_resnext50': (2048, 2048, 1024),
-    'kp_rpe': (512, 1024, 256), 
+    'kprpe12m': (512, 1024, 256), 
+    'kprpe4m': (512, 1024, 256), 
     **{
         f'ir50_{i}': (dim_in, mid_dim, feat_dim) for i, dim_in, mid_dim, feat_dim in zip(list(range(1,4)), [64,128,256], [128,512,256], [256,1048,512])
     },
