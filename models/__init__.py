@@ -197,7 +197,7 @@ class ImbalancedModel(nn.Module):
     def __init__(self, num_classes, model_type: str, feature_branch=False, feature_module=False,  
     regular_simplex=False, cos=True
     , learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False,
-    decomposition=False,):
+    decomposition=False, img_size=112):
         global model_dict, dim_dict
         if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
@@ -238,7 +238,7 @@ class ImbalancedModel(nn.Module):
 
         self.decomposition = OrthogonalDecomposer(dim_in) if decomposition=='Cayley' else None
 
-
+        self.img_size=img_size
     def freeze_backbone(self):
         for p in self.backbone.parameters():
             p.requires_grad = False
@@ -254,6 +254,9 @@ class ImbalancedModel(nn.Module):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
+        if self.img_size == 224 : 
+            x = nn.functional.interpolate(x, size=(224,224), mode='bilinear', align_corners=False)
+
         if hasattr(self, 'input_dist') and self.input_dist is not False:
             mean = self.input_dist[0].reshape(1,3,1,1)
             std = torch.clamp(self.input_dist[1], min=1e-6).reshape(1,3,1,1)

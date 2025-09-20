@@ -92,6 +92,7 @@ def get_args():
     args.add_argument('--dataset_path', type=str, required=True)
     args.add_argument('--num_classes', type=int, default=7)
     args.add_argument('--use_sampler', default=False)
+    args.add_argument('--img_size', type=int, choices=[112,224], default=112)
 
     # ckpts
     args.add_argument('--mean_weight', type=str, default=None)
