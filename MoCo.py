@@ -31,7 +31,8 @@ def get_model(args):
         'input_layer': False, 
         'freeze_backbone': False, 
         'remain_backbone': False, 
-        'decomposition': False
+        'decomposition': False,
+        'img_size': args.img_size
     }
     model = ImbalancedModel(**model_params)
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if args.model_type == 'kp_rpe' else None
