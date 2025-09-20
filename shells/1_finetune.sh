@@ -5,4 +5,4 @@ CUDA_VISIBLE_DEVICES=0 python3 MoCo.py --learning_rate=1e-5 --batch_size=64 --n_
 --mean_weight=checkpoint/ir50_72K_means \
 --model_type=ir50 \
 --loss=KBCL --kcl_k=$k --beta=0.3 --temperature=0.1 --utilze_class_centers=True --moco_k=72
-done &
+done 
