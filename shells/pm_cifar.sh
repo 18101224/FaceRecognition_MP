@@ -22,14 +22,20 @@ export MKL_NUM_THREADS=${OMP_NUM_THREADS}
 export OPENBLAS_NUM_THREADS=${OMP_NUM_THREADS}
 
 # inside pm_cifar.sh (replace the 4 separate srun blocks)
-SIZES=(64 128 32 256)
 
 srun -n 4 -c ${SLURM_CPUS_PER_TASK} \
   --gpus-per-task=1 --gpu-bind=map_gpu:0,1,2,3 --cpu-bind=cores \
   --kill-on-bad-exit=1 -l \
-  bash -lc "BS=(${SIZES[@]}); i=$SLURM_LOCALID; \
-    python3 MoCo.py --learning_rate=1e-5 --batch_size=${BS[$i]} --n_epochs=200 \
-    --world_size=1 --num_workers=${SLURM_CPUS_PER_TASK} --use_tf=True --weight_decay=5e-4 \
+  bash -lc 'i=$SLURM_LOCALID; \
+    case "$i" in \
+      0) bs=64 ;; \
+      1) bs=128 ;; \
+      2) bs=32 ;; \
+      3) bs=256 ;; \
+      *) echo "Unsupported SLURM_LOCALID: $i" >&2; exit 1 ;; \
+    esac; \
+    python3 MoCo.py --learning_rate=1e-5 --batch_size="$bs" --n_epochs=200 \
+    --world_size=1 --num_workers="${SLURM_CPUS_PER_TASK}" --use_tf=True --weight_decay=5e-4 \
     --dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True \
-    --mean_weight=checkpoint/kprpe_72K_means --model_type=kp_rpe \
-    --loss=KBCL --kcl_k=5 --beta=0.3 --temperature=0.1 --utilze_class_centers=True --moco_k=72"
+    --mean_weight=checkpoint/kprpe_72K_${bs} --model_type=kprpe12m \
+    --loss=KBCL --kcl_k=5 --beta=0.3 --temperature=0.1 --utilze_class_centers=True --moco_k=72'
