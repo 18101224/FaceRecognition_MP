@@ -6,18 +6,26 @@ from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, ge
 from models import ImbalancedModel, compute_class_spherical_means, slerp, dim_dict, calc_class_mean
 from torch import distributed as dist
 from argparse import ArgumentParser
-from Loss import Moco, KCL
+from Loss import Moco, KCL, compute_etf_loss
 from opt import SAM
 from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import tqdm
-from utils import get_acc, get_exp_id, get_ldmk, sync_scalar, measure_grad, concat_all_gather
-from aligners import get_aligner
+from utils import get_acc, get_exp_id, get_ldmk, sync_scalar, measure_grad, concat_all_gather, sync_defaultdict
 from collections import defaultdict
 from datetime import timedelta
 from aligners import get_aligner
 from copy import deepcopy
 import os 
 import wandb
+
+
+def include(loss, losses):
+    to_check = loss.split('_')
+    for loss_name in losses : 
+        for loss in to_check : 
+            if loss_name == loss : 
+                return True 
+    return False 
 
 def get_model(args):
     model_params = {
@@ -111,12 +119,13 @@ def get_args():
     args.add_argument('--use_tf', default=False)
 
     # CL args
-    args.add_argument('--loss', type=str, choices=['CE', 'KCL', 'KBCL'], default='CE')
+    args.add_argument('--loss', type=str, default='CE', help='first argument CE KBCL KCL second option ETF ex KCL_ETF')
     args.add_argument('--kcl_k', type=int, default=5)
     args.add_argument('--include_positives_in_denominator', default=False)
     args.add_argument('--exclude_same_class_from_negatives', default=False)
     args.add_argument('--use_batch_negatives', default=False)
     args.add_argument('--beta', type=float, default=0.3)
+    args.add_argument('--etf_weight', type=float, default=0.0)
     args.add_argument('--temperature', type=float, default=0.1)
     args.add_argument('--utilze_class_centers', default=False)
     args.add_argument('--moco_k', type=int, default=2)
@@ -148,7 +157,7 @@ class Trainer:
         self.args = args 
         self.model, self.aligner, self.model_params = get_model(args)
         self.train_loader, self.valid_loader, self.train_loader_wo_aug = get_loaders(args)
-        if self.args.loss in ['KCL', 'KBCL']:
+        if include(self.args.loss, ['KCL', 'KBCL']):
             self.moco, self.kcl = get_moco(args, self.model, self.train_loader_wo_aug,aligner=self.aligner)
             self.init_weight()
 
@@ -191,6 +200,12 @@ class Trainer:
             self.model.module.weight.data = mean.T
         self.mean = mean 
 
+    def process_loss(self, loss):
+        total_loss = 0
+        for key, value in loss.items():
+            total_loss += value
+        return total_loss
+
     def get_cl_loss(self, q, label,c , ldmk=None, k=None, k_label=None):
         # calc temporal class centers 
         if self.args.utilze_class_centers:
@@ -207,13 +222,26 @@ class Trainer:
         cl_loss = self.kcl(features=q, labels=label, pos_feats=k, pos_labels=k_label)
         return cl_loss * self.args.beta, k, k_label
 
-    def run_train_forward(self, img, label, ldmk=None, k=None, k_label=None):
+    def run_train_forward(self, img, label, ldmk=None, k=None, k_label=None, loss_for_log=None):
         logit, q, c = self.model(img, keypoint=ldmk, features=True)
+        temp_loss = defaultdict(float)
+        bs= q.shape[0]
         ce_loss = torch.nn.functional.cross_entropy(logit, label)
+        temp_loss['CE']=ce_loss
+        if loss_for_log is not None:
+            loss_for_log['CE']+=ce_loss.detach().item()*bs 
         if self.args.loss =='CE' :
-            return logit, ce_loss, torch.tensor(0,device=torch.device('cuda')), k, k_label
+            return logit, self.process_loss(temp_loss), torch.tensor(0,device=torch.device('cuda')), k, k_label
         cl_loss, k, k_label = self.get_cl_loss(q, label, c, ldmk, k, k_label)
-        return logit, ce_loss, cl_loss, k, k_label
+        temp_loss['CL']=cl_loss
+        if loss_for_log is not None:
+            loss_for_log['CL']+=cl_loss.detach().item()*bs
+        if include(self.args.loss, ['ETF']) :
+            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight)
+            temp_loss['ETF']=etf_loss
+            if loss_for_log is not None:
+                loss_for_log['ETF']+=etf_loss.detach().item()*bs
+        return logit, self.process_loss(temp_loss), k, k_label
     
     def run_valid_forward(self, img, label, ldmk=None):
         logit = self.model(img, keypoint=ldmk, features=False)
@@ -222,36 +250,32 @@ class Trainer:
             
     def run_train_epoch(self):
         self.model.train()
-        total_ce_loss = 0
-        total_cl_loss = 0
+
         total_acc = 0
         temp_grad = defaultdict(list)
+        loss_for_log = defaultdict(float)
         for img,label in tqdm(self.train_loader, disable=self.args.world_size > 1 and self.args.rank != 0, 
          desc=f"training epoch {self.epoch} latest_acc: {(self.log['valid_acc'][-1] if len(self.log['valid_acc']) > 0 else 0):.4f} best_acc: {self.best_acc:.4f}"):
             img, label = img.cuda(), label.cuda()
             ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
-            logit, ce_loss, cl_loss, k, k_label = self.run_train_forward(img, label, ldmk, k=None, k_label=None)
-            (ce_loss+cl_loss).backward()
+            logit, loss, k, k_label = self.run_train_forward(img, label, ldmk, k=None, k_label=None, loss_for_log=loss_for_log)
+            loss.backward()
             if self.args.measure_grad : 
-                temp_grad = measure_grad(self.model, ce_loss, cl_loss, temp_grad, layer_names=['backbone'])
+                temp_grad = measure_grad(self.model, 0, 0, temp_grad, layer_names=['backbone'])
             self.opt.first_step(zero_grad=True)
             with torch.no_grad():
                 total_acc += get_acc(logit,label)*label.shape[0]
-                total_ce_loss += ce_loss.detach().item()*label.shape[0]
-                total_cl_loss += cl_loss.detach().item()*label.shape[0]
-            _, ce_loss, cl_loss, _ , _ = self.run_train_forward(img,label,ldmk, k=k, k_label=k_label)
-            (ce_loss + cl_loss).backward()
+            _, loss, _ , _ = self.run_train_forward(img,label,ldmk, k=k, k_label=k_label, loss_for_log=None)
+            loss.backward()
             self.opt.second_step(zero_grad=True)
-            if self.args.loss in ['KCL', 'KBCL']:
+            if include(self.args.loss, ['KCL', 'KBCL']):
                 self.moco.momentum_update(self.model if self.args.world_size==1 else self.model.module)
                 self.moco.enqueue(img, label, ldmk)
             
         if self.args.world_size > 1 : 
             total_acc = sync_scalar(total_acc, torch.device('cuda'))
-            total_ce_loss = sync_scalar(total_ce_loss, torch.device('cuda'))
-            total_cl_loss = sync_scalar(total_cl_loss, torch.device('cuda'))
-        return total_acc / len(self.train_loader.dataset), total_ce_loss / len(self.train_loader.dataset), \
-         total_cl_loss / len(self.train_loader.dataset)
+            loss_for_log = sync_defaultdict(loss_for_log, N=len(self.train_loader.dataset), normalize=False)
+        return total_acc / len(self.train_loader.dataset), loss_for_log
 
 
     @torch.no_grad()
@@ -286,7 +310,7 @@ class Trainer:
                 'log' : self.log,
                 'args' : self.args,
                 'id' : self.id,
-                'mean' : self.mean if self.args.loss in ['KCL', 'KBCL'] else None, 
+                'mean' : self.mean if include(self.args.loss, ['KCL', 'KBCL']) else None, 
                 'model_params': self.model_params,
                 'args' : self.args
             }
@@ -295,25 +319,24 @@ class Trainer:
                 torch.save(ckpt, f'{self.save_dir}/best.pth')
 
     def run_epoch(self):
-        train_acc, train_ce_loss, train_cl_loss = self.run_train_epoch()
+        train_acc, train_loss_for_log = self.run_train_epoch()
         valid_acc, valid_loss = self.run_valid_epoch()
         self.log['train_acc'].append(train_acc)
-        self.log['train_ce_loss'].append(train_ce_loss)
-        self.log['train_cl_loss'].append(train_cl_loss)
+        for key, value in train_loss_for_log.items():
+            self.log[key].append(value)
         self.log['valid_acc'].append(valid_acc)
         self.log['valid_loss'].append(valid_loss)
         if self.args.world_size == 1 or self.args.rank == 0 :
                 wandb.log({
                 'train_acc': train_acc,
-                'train_ce_loss': train_ce_loss,
-                'train_cl_loss': train_cl_loss,
                 'valid_acc': valid_acc,
                 'valid_loss': valid_loss,
                 'best_acc': self.best_acc,
                 'epoch': self.epoch,
+                **dict(train_loss_for_log)
                 })
         self.save(valid_acc)
-        return train_acc, train_ce_loss, train_cl_loss, valid_acc, valid_loss
+
 
     def train(self):
         for epoch in range(self.args.n_epochs):

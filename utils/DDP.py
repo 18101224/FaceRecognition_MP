@@ -1,7 +1,14 @@
 import torch
 import torch.distributed as dist
 
-__all__ = ['sync_scalar', 'concat_all_gather']
+__all__ = ['sync_scalar', 'concat_all_gather', 'sync_defaultdict']
+
+
+def sync_defaultdict(dictionary, N,normalize: bool = False):
+    for key, value in dictionary.items():
+        dictionary[key] = sync_scalar(value, normalize=normalize)/N
+    return dictionary
+
 
 def sync_scalar(scalar, normalize: bool = False ):
     """
