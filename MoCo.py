@@ -336,17 +336,17 @@ class Trainer:
         self.log['valid_acc'].append(valid_acc)
         self.log['valid_loss'].append(valid_loss)
         if self.args.world_size == 1 or self.args.rank == 0 :
-                wandb.log({
-                'train_acc': train_acc,
-                'valid_acc': valid_acc,
-                'valid_loss': valid_loss,
-                'best_acc': self.best_acc,
-                'epoch': self.epoch,
-                **dict(train_loss_for_log),
-                **{k:v for k,v in zip(['avail_memory', 'rss_memory'], list(get_mem()))}
-                })
-                # save angle matrix image each epoch
-                self.save_angle_mat(self.epoch)
+            wandb.log({
+            'train_acc': train_acc,
+            'valid_acc': valid_acc,
+            'valid_loss': valid_loss,
+            'best_acc': self.best_acc,
+            'epoch': self.epoch,
+            **dict(train_loss_for_log),
+            **{k:v for k,v in zip(['avail_memory', 'rss_memory'], list(get_mem()))}
+            })
+            # save angle matrix image each epoch
+            self.save_angle_mat(self.epoch)
         self.save(valid_acc)
 
 

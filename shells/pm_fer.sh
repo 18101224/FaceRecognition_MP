@@ -3,7 +3,7 @@
 #SBATCH -A m1248_g 
 #SBATCH -q shared
 #SBATCH -N 1
-#SBATCH -t 04:00:00
+#SBATCH -t 12:00:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -24,20 +24,9 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
-
-make_cmd () {
-
-  local EXTRA=$1        # loss·weight·스케줄 인자 묶음
-  python3 train_imbalanced.py \
-        --batch_size=128 --n_epochs=200 --weight_decay=5e-4 \
-        --cos=True --momentum=0.9 --world_size=1 \
-        --model_type=ir50  --imb_type=exp --imb_factor=0.01 \
-        --dataset_path=../data/RAF-DB_balanced --dataset_name=RAF-DB --use_sampler=True --aug=True --cutout=True --use_wandb=True  --feature_branch=True --use_tf=True  --num_workers=32 \
-           --temperature=0.1 --scheduler=warmup   $EXTRA
-}
-
-
-
-
-make_cmd "--learning_rate=1e-5 --loss=CE --cl_weight=1 --cosine_scaling=4"  &
-wait  
+python3 Moco.py --world_size=1 --num_workers=32 --use_tf=True \
+--learning_rate=1e-5 --batch_size=256 --n_epochs=200 --weight_decay=5e-4 \
+--dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True --img_size=112 \
+--mean_weight=checkpoint/kprpe12m_72K \
+--model_type=kprpe12m \
+--loss=KBCL_ETF --kcl_k=5 --beta=0.3 --temperature=0.1 --utilze_class_centers=True --moco_k=72 --etf_weight=2 \
