@@ -2,7 +2,7 @@ import torch
 from torch import nn 
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
-from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, get_fer_transforms
+from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, get_fer_transforms, ClassBatchSampler
 from models import ImbalancedModel, compute_class_spherical_means, slerp, dim_dict, calc_class_mean
 from torch import distributed as dist
 from argparse import ArgumentParser
@@ -11,12 +11,15 @@ from opt import SAM
 from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import tqdm
 from utils import get_acc, get_exp_id, get_ldmk, sync_scalar, measure_grad, concat_all_gather, sync_defaultdict
+from analysis import plot_angle_matrix
+import wandb
 from collections import defaultdict
 from datetime import timedelta
 from aligners import get_aligner
 from copy import deepcopy
 import os 
 import wandb
+from utils import get_mem
 
 
 def include(loss, losses):
@@ -129,6 +132,7 @@ def get_args():
     args.add_argument('--temperature', type=float, default=0.1)
     args.add_argument('--utilze_class_centers', default=False)
     args.add_argument('--moco_k', type=int, default=2)
+    args.add_argument('--etf_statistics', default=False)
 
     # logging args 
     args.add_argument('--measure_grad', default=False)
@@ -157,6 +161,7 @@ class Trainer:
         self.args = args 
         self.model, self.aligner, self.model_params = get_model(args)
         self.train_loader, self.valid_loader, self.train_loader_wo_aug = get_loaders(args)
+        self.fetcher = ClassBatchSampler(args, transform=get_fer_transforms(train=True, model_type=args.model_type),idx=False)
         if include(self.args.loss, ['KCL', 'KBCL']):
             self.moco, self.kcl = get_moco(args, self.model, self.train_loader_wo_aug,aligner=self.aligner)
             self.init_weight()
@@ -215,7 +220,7 @@ class Trainer:
             temp_mean = slerp(self.mean[temp_mask==True].detach().clone(), temp_mean[temp_mask==True], 0.001)
             now_mean = self.mean.clone().detach()
             now_mean[temp_mask==True] = temp_mean 
-            self.mean[temp_mask==True] = now_mean[temp_mask==True]
+            self.mean[temp_mask==True] = now_mean[temp_mask==True].detach().clone()
         label = torch.cat([label, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilze_class_centers else 1)], dim=0)
         q = torch.cat([q,now_mean,c],dim=0) if self.args.utilze_class_centers else torch.cat([q,c],dim=0)
         k, k_label = self.moco.get_k(label, self.args.kcl_k) if k is None else (k,k_label)
@@ -237,12 +242,13 @@ class Trainer:
         if loss_for_log is not None:
             loss_for_log['CL']+=cl_loss.detach().item()*bs
         if include(self.args.loss, ['ETF']) :
-            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight)
+            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight, statistics=self.args.etf_statistics)
             temp_loss['ETF']=etf_loss
             if loss_for_log is not None:
                 loss_for_log['ETF']+=etf_loss.detach().item()*bs
         return logit, self.process_loss(temp_loss), k, k_label
     
+    @torch.no_grad()
     def run_valid_forward(self, img, label, ldmk=None):
         logit = self.model(img, keypoint=ldmk, features=False)
         loss = torch.nn.functional.cross_entropy(logit, label)
@@ -275,6 +281,9 @@ class Trainer:
         if self.args.world_size > 1 : 
             total_acc = sync_scalar(total_acc, torch.device('cuda'))
             loss_for_log = sync_defaultdict(loss_for_log, N=len(self.train_loader.dataset), normalize=False)
+        else: 
+            for key, value in loss_for_log.items():
+                loss_for_log[key] = value / len(self.train_loader.dataset)
         return total_acc / len(self.train_loader.dataset), loss_for_log
 
 
@@ -333,8 +342,11 @@ class Trainer:
                 'valid_loss': valid_loss,
                 'best_acc': self.best_acc,
                 'epoch': self.epoch,
-                **dict(train_loss_for_log)
+                **dict(train_loss_for_log),
+                **{k:v for k,v in zip(['avail_memory', 'rss_memory'], list(get_mem()))}
                 })
+                # save angle matrix image each epoch
+                self.save_angle_mat(self.epoch)
         self.save(valid_acc)
 
 
@@ -345,13 +357,32 @@ class Trainer:
                 self.train_loader.sampler.set_epoch(epoch)
                 self.valid_loader.sampler.set_epoch(epoch)
             self.run_epoch()
+
         if self.args.world_size == 1 or self.args.rank == 0 :
             import pickle 
             with open(f'{self.save_dir}/log.pkl','wb') as f:
                 pickle.dump(self.log,f)
+            # Log final angle matrix image to W&B
+            try:
+                final_img = os.path.join(self.save_dir, 'angle_mat', f"{str(self.epoch).zfill(4)}.png")
+                if os.path.exists(final_img):
+                    wandb.log({'final/angle_matrix': wandb.Image(final_img), 'final_epoch': self.epoch})
+            except Exception as _e:
+                pass
+
+    @torch.no_grad()
+    def save_angle_mat(self, epoch):
+        if not (self.args.world_size == 1 or self.args.rank == 0):
+            return
+        save_dir = os.path.join(self.save_dir, 'angle_mat')
+        os.makedirs(save_dir, exist_ok=True)
+        kernel = self.model.get_kernel() if self.args.world_size == 1 else self.model.module.get_kernel()
+        angle_mat = (torch.arccos((kernel.T@kernel).clamp(-1.0,1.0)) * 180.0 / torch.pi).detach().cpu().numpy()
+        plot_angle_matrix(angle_mat, os.path.join(save_dir, f"{str(epoch).zfill(4)}.png"))
 
 
 if __name__ == '__main__':
     args = get_args()
     trainer = Trainer(args)
     trainer.train()
+

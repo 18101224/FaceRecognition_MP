@@ -79,7 +79,7 @@ def get_acc(x,y):
     result = pred == y
     result = result
     result = sum(result)
-    return (result/bs).item()
+    return (result/bs).detach().item()
 
 @torch.no_grad()
 def get_macro_acc(x,y):

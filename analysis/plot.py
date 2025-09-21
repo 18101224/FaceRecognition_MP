@@ -469,7 +469,7 @@ def plot_tsne_features(features, labels, train_labels, save_path: str, original_
         return None
     
 
-def plot_angle_matrix(angle_matrices, save_path: str, model_names=None, dataset_name=None):
+def plot_angle_matrix(angle_matrices, save_path: str, model_names=None):
     """
     Plot one or more angle matrices as heatmaps side by side.
     If n_c <= 20, show the angle values in the heatmap and display mean/std of upper triangle (excluding diagonal) in a box at the upper right.
@@ -482,14 +482,7 @@ def plot_angle_matrix(angle_matrices, save_path: str, model_names=None, dataset_
         abs_statistics (tuple or None): (mean, std) to use as base and range
     """
     
-    statistics_dict = {
-        'cifar10': (np.arccos(-1/9)*180.0/np.pi,10),
-        'cifar100': (np.arccos(-1/99)*180.0/np.pi,10),
-        'imagenet_lt': (np.arccos(-1/999)*180.0/np.pi,10),
-        'RAF-DB': (np.arccos(-1/6)*180.0/np.pi, 10),
-        'AffectNet': (np.arccos(-1/6)*180.0/np.pi, 10)
-    }
-    abs_statistics = statistics_dict[dataset_name]
+    abs_statistics = (np.arccos(-1/(angle_matrices[0].shape[0]-1))*180.0/np.pi, 10)
     # Handle single matrix input
     if isinstance(angle_matrices, np.ndarray):
         angle_matrices = [angle_matrices]
