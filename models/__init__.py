@@ -241,6 +241,7 @@ class ImbalancedModel(nn.Module):
         self.decomposition = OrthogonalDecomposer(dim_in) if decomposition=='Cayley' else None
 
         self.img_size=img_size
+        
     def freeze_backbone(self):
         for p in self.backbone.parameters():
             p.requires_grad = False

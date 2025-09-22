@@ -1,6 +1,6 @@
 import torch
 from torch import distributed as dist
-
+from tqdm import tqdm
 __all__ = ['slerp', 'compute_class_spherical_means', 'calc_class_mean']
 
 # ---------- 기본 유틸 ----------
@@ -186,7 +186,7 @@ def compute_class_spherical_means(
     class_to_features = {}
     feature_dim = None
 
-    for batch in loader:
+    for batch in tqdm(loader, desc='Computing class spherical means'):
         images, labels = _extract_batch_from_loader_item(batch)
         images = images.to(device)
         labels = labels.to(device)

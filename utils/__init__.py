@@ -83,6 +83,11 @@ def get_acc(x,y):
 
 @torch.no_grad()
 def get_macro_acc(x,y):
+    '''
+    :param x: bs, num_classes // gpu 
+    :param y: bs // gpu 
+    :return: returns a num_classes shaped tensor, counting the number of correct predictions per class
+    '''
     _, pred = torch.max(x,dim=-1)
     binary = pred == y
     n_classes = x.shape[-1]
@@ -90,7 +95,7 @@ def get_macro_acc(x,y):
     for c in range(n_classes):
         a = sum(binary[y==c])
         result[c] = a
-    return result.reshape(-1)
+    return result.float().reshape(-1).detach()
 
 def get_norm(model,loader,device):
     with torch.no_grad():

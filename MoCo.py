@@ -6,11 +6,11 @@ from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, ge
 from models import ImbalancedModel, compute_class_spherical_means, slerp, dim_dict, calc_class_mean
 from torch import distributed as dist
 from argparse import ArgumentParser
-from Loss import Moco, KCL, compute_etf_loss
+from Loss import Moco, KCL, compute_etf_loss, EKCL
 from opt import SAM
 from torch.optim.lr_scheduler import ExponentialLR
 from tqdm import tqdm
-from utils import get_acc, get_exp_id, get_ldmk, sync_scalar, measure_grad, concat_all_gather, sync_defaultdict
+from utils import get_acc, get_exp_id, get_ldmk, sync_scalar, measure_grad, concat_all_gather, sync_defaultdict, get_mem, get_macro_acc
 from analysis import plot_angle_matrix
 import wandb
 from collections import defaultdict
@@ -19,7 +19,6 @@ from aligners import get_aligner
 from copy import deepcopy
 import os 
 import wandb
-from utils import get_mem
 
 
 def include(loss, losses):
@@ -53,6 +52,7 @@ def get_model(args):
 def get_loaders(args):
     train_transform, valid_transform, train_transform_wo_aug = get_fer_transforms(train=True,model_type=args.model_type), get_fer_transforms(train=False,model_type=args.model_type), get_fer_transforms(train=False,model_type=args.model_type)
     train_dataset, valid_dataset, train_dataset_wo_aug = FER(args=args, train=True, transform=train_transform, idx=False), FER(args=args, train=False, transform=valid_transform, idx=False), FER(args=args, train=False, transform=train_transform_wo_aug, idx=False, balanced=False)
+    balanced_dataset = FER(args,transform=valid_transform, train=False, idx=False, balanced=True) if args.dataset_name == 'RAF-DB' else None
     if args.world_size > 1 :
         if args.use_sampler :
             train_sampler = DistributedSamplerWrapper(ImbalancedDatasetSampler(train_dataset, labels=train_dataset.labels), shuffle=True)
@@ -60,6 +60,7 @@ def get_loaders(args):
             train_sampler = DistributedSampler(train_dataset, shuffle=True)
         valid_sampler = DistributedSampler(valid_dataset, shuffle=False)
         train_sampler_wo_aug = DistributedSampler(train_dataset_wo_aug, shuffle=False)
+        balanced_sampler = DistributedSampler(balanced_dataset, shuffle=False) if args.dataset_name == 'RAF-DB' else None
     else:
         if args.use_sampler :
             train_sampler = ImbalancedDatasetSampler(train_dataset, labels=train_dataset.labels)
@@ -67,10 +68,12 @@ def get_loaders(args):
             train_sampler = None
         valid_sampler = None
         train_sampler_wo_aug = None
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=args.num_workers, pin_memory=True)
+        balanced_sampler = None
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=args.num_workers, pin_memory=True, shuffle=train_sampler is None)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, sampler=valid_sampler, num_workers=args.num_workers, pin_memory=True)
     train_loader_wo_aug = DataLoader(train_dataset_wo_aug, batch_size=args.batch_size, sampler=train_sampler_wo_aug, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-    return train_loader, valid_loader, train_loader_wo_aug
+    balanced_loader = DataLoader(balanced_dataset, batch_size=args.batch_size, sampler=balanced_sampler, shuffle=False, num_workers=args.num_workers, pin_memory=True) if args.dataset_name == 'RAF-DB' else None 
+    return train_loader, valid_loader, train_loader_wo_aug, balanced_loader
 
 def get_optimizer(args, model):
     opt = SAM(model.parameters(),base_optimizer=torch.optim.AdamW,lr=args.learning_rate,weight_decay=args.weight_decay)
@@ -133,7 +136,7 @@ def get_args():
     args.add_argument('--utilze_class_centers', default=False)
     args.add_argument('--moco_k', type=int, default=2)
     args.add_argument('--etf_statistics', default=False)
-
+    args.add_argument('--k_grad', default=False)
     # logging args 
     args.add_argument('--measure_grad', default=False)
     args.add_argument('--debug', default=False)
@@ -160,12 +163,12 @@ class Trainer:
     def __init__(self, args):
         self.args = args 
         self.model, self.aligner, self.model_params = get_model(args)
-        self.train_loader, self.valid_loader, self.train_loader_wo_aug = get_loaders(args)
-        self.fetcher = ClassBatchSampler(args, transform=get_fer_transforms(train=True, model_type=args.model_type),idx=False)
+        self.train_loader, self.valid_loader, self.train_loader_wo_aug, self.balanced_loader = get_loaders(args)
         if include(self.args.loss, ['KCL', 'KBCL']):
             self.moco, self.kcl = get_moco(args, self.model, self.train_loader_wo_aug,aligner=self.aligner)
-            self.init_weight()
-
+        if include(self.args.loss, ['EKCL']):
+            self.ekcl = EKCL(args, ClassBatchSampler(args, transform=get_fer_transforms(train=True, model_type=args.model_type),idx=False))
+        self.init_weight()
         self.opt, self.scheduler = get_optimizer(args, self.model)
         self.init_logs()
 
@@ -212,7 +215,6 @@ class Trainer:
         return total_loss
 
     def get_cl_loss(self, q, label,c , ldmk=None, k=None, k_label=None):
-        # calc temporal class centers 
         if self.args.utilze_class_centers:
             q_for_mu = concat_all_gather(q) if self.args.world_size > 1 else q
             label_for_mu = concat_all_gather(label) if self.args.world_size > 1 else label
@@ -221,11 +223,19 @@ class Trainer:
             now_mean = self.mean.clone().detach()
             now_mean[temp_mask==True] = temp_mean 
             self.mean[temp_mask==True] = now_mean[temp_mask==True].detach().clone()
-        label = torch.cat([label, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilze_class_centers else 1)], dim=0)
-        q = torch.cat([q,now_mean,c],dim=0) if self.args.utilze_class_centers else torch.cat([q,c],dim=0)
-        k, k_label = self.moco.get_k(label, self.args.kcl_k) if k is None else (k,k_label)
-        cl_loss = self.kcl(features=q, labels=label, pos_feats=k, pos_labels=k_label)
-        return cl_loss * self.args.beta, k, k_label
+        # calc temporal class centers 
+        if include(self.args.loss, ['EKCL']):
+            cl_loss,k = self.ekcl(q,label,weight=self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T
+            , centers=now_mean, model=self.model if self.args.world_size==1 else self.model.module, aligner=self.aligner, requires_grad=self.args.k_grad, k=k)
+            k_label = None 
+        elif include(self.args.loss, ['KCL', 'KBCL']):
+
+            label = torch.cat([label, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilze_class_centers else 1)], dim=0)
+            q = torch.cat([q,now_mean,c],dim=0) if self.args.utilze_class_centers else torch.cat([q,c],dim=0)
+            k, k_label = self.moco.get_k(label, self.args.kcl_k) if k is None else (k,k_label)
+            cl_loss = self.kcl(features=q, labels=label, pos_feats=k, pos_labels=k_label)
+
+        return cl_loss*self.args.beta, k, k_label
 
     def run_train_forward(self, img, label, ldmk=None, k=None, k_label=None, loss_for_log=None):
         logit, q, c = self.model(img, keypoint=ldmk, features=True)
@@ -236,7 +246,7 @@ class Trainer:
         if loss_for_log is not None:
             loss_for_log['CE']+=ce_loss.detach().item()*bs 
         if self.args.loss =='CE' :
-            return logit, self.process_loss(temp_loss), torch.tensor(0,device=torch.device('cuda')), k, k_label
+            return logit, self.process_loss(temp_loss), k, k_label
         cl_loss, k, k_label = self.get_cl_loss(q, label, c, ldmk, k, k_label)
         temp_loss['CL']=cl_loss
         if loss_for_log is not None:
@@ -292,6 +302,9 @@ class Trainer:
         self.model.eval()
         total_loss = 0
         total_acc = 0
+        total_macro_acc = torch.zeros((self.args.num_classes),device=torch.device('cuda')).float()
+        balanced_loss = 0
+        balanced_acc = 0
         for img, label in tqdm(self.valid_loader, disable=self.args.world_size > 1 and self.args.rank != 0,
          desc=f"validating epoch {self.epoch} latest_acc: {(self.log['valid_acc'][-1] if len(self.log['valid_acc']) > 0 else 0):.4f} best_acc: {self.best_acc:.4f}"):
             img, label = img.cuda(), label.cuda()
@@ -299,10 +312,28 @@ class Trainer:
             loss, logit = self.run_valid_forward(img, label, ldmk)
             total_loss += loss.detach().item()*label.shape[0]
             total_acc += get_acc(logit, label)*label.shape[0]
+            total_macro_acc += get_macro_acc(logit, label)
+
+        if self.args.dataset_name == 'RAF-DB':
+            for img, label in tqdm(self.balanced_loader, disable=self.args.world_size > 1 and self.args.rank != 0,
+             desc=f"validating epoch {self.epoch} latest_acc: {(self.log['valid_acc'][-1] if len(self.log['valid_acc']) > 0 else 0):.4f} best_acc: {self.best_acc:.4f}"):
+                img, label = img.cuda(), label.cuda()
+                ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
+                loss, logit = self.run_valid_forward(img, label, ldmk)
+                balanced_loss += loss.detach().item()*label.shape[0]
+                balanced_acc += get_acc(logit, label)*label.shape[0]
+
         if self.args.world_size > 1 :
             total_loss = sync_scalar(total_loss, torch.device('cuda'))
             total_acc = sync_scalar(total_acc, torch.device('cuda'))
-        return total_acc / len(self.valid_loader.dataset), total_loss / len(self.valid_loader.dataset)
+            dist.all_reduce(total_macro_acc, op=dist.ReduceOp.SUM)
+            balanced_loss = sync_scalar(balanced_loss, torch.device('cuda')) if self.balanced_loader is not None else 0
+            balanced_acc = sync_scalar(balanced_acc, torch.device('cuda')) if self.balanced_loader is not None else 0
+
+        N = len(self.valid_loader.dataset) 
+        NB = len(self.balanced_loader.dataset) if self.balanced_loader is not None else 1
+        total_macro_acc = (total_macro_acc / torch.tensor(self.valid_loader.dataset.get_img_num_per_cls(), device=torch.device('cuda'), dtype=torch.float32)).float().mean().detach().cpu().item()
+        return total_acc / N, total_loss/N, balanced_acc / NB, balanced_loss / NB, total_macro_acc
 
     def save(self, valid_acc):
         if valid_acc > self.best_acc : 
@@ -329,7 +360,7 @@ class Trainer:
 
     def run_epoch(self):
         train_acc, train_loss_for_log = self.run_train_epoch()
-        valid_acc, valid_loss = self.run_valid_epoch()
+        valid_acc, valid_loss, balanced_acc, balanced_loss, valid_macro_acc = self.run_valid_epoch()
         self.log['train_acc'].append(train_acc)
         for key, value in train_loss_for_log.items():
             self.log[key].append(value)
@@ -342,6 +373,9 @@ class Trainer:
             'valid_loss': valid_loss,
             'best_acc': self.best_acc,
             'epoch': self.epoch,
+            'valid_acc_balanced': balanced_acc,
+            'valid_loss_balanced': balanced_loss,
+            'valid_macro_acc': valid_macro_acc,
             **dict(train_loss_for_log),
             **{k:v for k,v in zip(['avail_memory', 'rss_memory'], list(get_mem()))}
             })

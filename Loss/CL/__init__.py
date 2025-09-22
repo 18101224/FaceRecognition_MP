@@ -4,8 +4,8 @@ import torch.distributed as dist
 import math
 from .KCL import KCL
 from .ETF import compute_etf_loss
-
-__all__ =  ['Moco', 'KCL', 'compute_etf_loss']
+from .EKCL import EKCL
+__all__ =  ['Moco', 'KCL', 'compute_etf_loss', 'EKCL']
 
 class Moco:
     def __init__(self, args, key_encoder, num_classes, dim, device='cuda', init_queue=None):
