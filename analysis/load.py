@@ -3,7 +3,7 @@ sys.path.append('..')
 from dataset.fer import FER
 from dataset.transform import get_transform
 from models import  get_model 
-from dataset import get_cifar_dataset, get_transform, Large_dataset
+from dataset import get_cifar_dataset, get_transform, Large_dataset, get_fer_transforms
 import torch
 from torch.utils.data import DataLoader 
 from aligners import get_aligner
@@ -15,7 +15,7 @@ def load_logs(ckpt_paths):
     results = []
     for ckpt_path in ckpt_paths:
         results.append(
-            torch.load(os.path.join(ckpt_path,'latest.pth'),weights_only=False)
+            torch.load(os.path.join(ckpt_path,'bests.pth'),weights_only=False)
         )
     return results
 
@@ -24,17 +24,15 @@ def concat_args(args, logs):
     temp_args = vars(args) if isinstance(args,argparse.Namespace) else args 
     for log in logs : 
         temp_log_args = vars(log['args']) if isinstance(log['args'],argparse.Namespace) else log['args']
-
+        temp_log_args = {**temp_log_args, **log['model_params']}
         results.append(argparse.Namespace(**{**temp_args, **temp_log_args}))
-
-
     return results
 
 def load_models(model_paths, args):
     results = []
     for model_path, arg in zip(model_paths, args) : 
         ckpt_path = os.path.join(model_path, f'{arg.ckpt_type}.pth')
-        model = get_model(arg)
+        model = get_model(arg, ckpt_path)
         model.load_state_dict(torch.load(ckpt_path,map_location=torch.device('cuda'),weights_only=False)['model_state_dict'])
         model = model.to(torch.device('cuda'))
         model.eval()
@@ -59,10 +57,10 @@ def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
             dataset = Large_dataset(root=dataset_path, mode=train, transform=None)
             result.append(dataset)
         elif 'RAF-DB' in dataset_name:
-            dataset = FER(args,train=(train=='train'), transform=get_transform(args,train=False),idx=False)
+            dataset = FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=False)
             result.append(dataset)
             if not train == 'train':
-                result.append(FER(args, train=(train=='train'), transform=get_transform(args,train=False),balanced=True,idx=False))
+                result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),balanced=True,idx=False))
         elif 'AffectNet' in dataset_name:
             raise ValueError(f'Dataset {dataset_name} not supported')
                 

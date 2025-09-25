@@ -108,7 +108,8 @@ def get_args():
     args.add_argument('--batch_size', type=int, required=True)
     args.add_argument('--n_epochs', type=int, required=True)
     args.add_argument('--weight_decay', type=float, required=True)
-
+    args.add_argument('--optimizer', type=str, choices=['AdamW','SAM'], default='SAM')
+    args.add_argument('--scheduler', choices=['exp', 'cosine'] , default='exp')
     # dataset info
     args.add_argument('--dataset_name', type=str, choices=['RAF-DB', 'AffectNet'], required=True)
     args.add_argument('--dataset_path', type=str, required=True)
@@ -134,11 +135,13 @@ def get_args():
     args.add_argument('--beta', type=float, default=0.3)
     args.add_argument('--etf_weight', type=float, default=0.0)
     args.add_argument('--temperature', type=float, default=0.1)
-    args.add_argument('--utilze_class_centers', default=False)
+
     args.add_argument('--moco_k', type=int, default=2)
     args.add_argument('--etf_statistics', default=False)
     args.add_argument('--k_grad', default=False)
     args.add_argument('--balanced_cl', default=False)
+    args.add_argument('--utilze_class_centers', default=False)
+    args.add_argument('--utilze_target_centers', default=False)
     
     # logging args 
     args.add_argument('--measure_grad', default=False)
@@ -226,13 +229,16 @@ class Trainer:
             now_mean = self.mean.clone().detach()
             now_mean[temp_mask==True] = temp_mean 
             self.mean[temp_mask==True] = now_mean[temp_mask==True].detach().clone()
+        else:
+            now_mean = None
+        weight = self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T if self.args.utilze_target_centers else None
+
         # calc temporal class centers 
         if include(self.args.loss, ['EKCL']):
-            cl_loss,k = self.ekcl(q,label,weight=self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T
+            cl_loss,k = self.ekcl(q,label,weight=weight
             , centers=now_mean, model=self.model if self.args.world_size==1 else self.model.module, aligner=self.aligner, requires_grad=self.args.k_grad, k_imgs=k)
-            k_label = None 
+            k_label = None
         elif include(self.args.loss, ['KCL', 'KBCL']):
-
             label = torch.cat([label, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilze_class_centers else 1)], dim=0)
             q = torch.cat([q,now_mean,c],dim=0) if self.args.utilze_class_centers else torch.cat([q,c],dim=0)
             k, k_label = self.moco.get_k(label, self.args.kcl_k) if k is None else (k,k_label)

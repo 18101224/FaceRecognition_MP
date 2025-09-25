@@ -76,9 +76,10 @@ class EKCL :
         y_ = gather_tensor(y) if self.args.world_size>1 else y # bs
         k_ = gather_tensor(spherical_frechet_mean(k_features)) if self.args.world_size>1 else spherical_frechet_mean(k_features)
         # bs, dim 
-        y_ = torch.concat([y_, torch.arange(weight.shape[0]).repeat(2).to(q.device)]) # bs+C+C
-        k_ = torch.concat([k_,weight, centers] , dim=0) # bs+C+C, dim
 
+        y_ = torch.concat([y_, torch.arange(weight.shape[0]).repeat(int(bool(centers is not None))+int(bool(weight is not None))).to(q.device)]) if centers is not None and weight is not None else y_ # bs+C+C 
+        k_ = torch.concat([k_, weight], dim=0 ) if weight is not None else k_ # bs+C+C, dim 
+        k_ = torch.concat([k_, centers], dim=0) if centers is not None else k_ # bs+C+C, dim 
         loss = self.compute_sims(q_, k_, y_)
         return loss, k_imgs
 

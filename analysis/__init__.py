@@ -15,6 +15,8 @@ class Analysis:
         self.args = args
         
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        log = load_logs(self.args.model_paths)[0]
+        self.args = concat_args(self.args, [log])[0]
 
         #load dataset 
         self.datasets = load_dataset(self.args,dataset_path=self.args.dataset_path, dataset_name=self.args.dataset_name, imb_factor=self.args.imb_factor)
@@ -25,8 +27,7 @@ class Analysis:
         if self.args.mode == 'dataset':
             return 
         #load model
-        log = load_logs(self.args.model_paths)[0]
-        self.args = concat_args(self.args, [log])[0]
+
         self.model = load_models(self.args.model_paths, [self.args])[0]
         self.aligner = load_aligner(self.args.aligner_path) if self.args.aligner_path else None
         # self.backbone_analysis = Analyze_backbone(self.args)

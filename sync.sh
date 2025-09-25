@@ -13,7 +13,7 @@ SERVERS=(
     
 )
 SERVERS=(
-    "server6:/home/gpuadmin/mj/rl/"
+    "mine1:/home/mj/rl/"
 )
 # Exclude checkpoint directory from syncing
 

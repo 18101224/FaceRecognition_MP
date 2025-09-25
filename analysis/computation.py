@@ -38,7 +38,7 @@ def normalize_confusion_matrix(cm: np.ndarray, labels: np.ndarray):
             norm_cm[i, :] /= count
     return norm_cm
 
-@torch.no_grad()
+@torch.inference_mode()
 def get_predictions(model,loader,aligner=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     preds = []
@@ -47,8 +47,8 @@ def get_predictions(model,loader,aligner=None):
         img = img.to(device)
         label = label.to(device)
         if aligner:
-            _,ldmk,_,_,_,_ = aligner(img)
-            pred = model(img,ldmk)
+            _,_,ldmk,_,_,_ = aligner(img)
+            pred = model(img,keypoint=ldmk)
         else:
             pred = model(img)
         preds.append(pred.detach().cpu())
