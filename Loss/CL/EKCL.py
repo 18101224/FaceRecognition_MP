@@ -1,7 +1,14 @@
 import torch 
 from torch.nn import functional as F
+from torch import dist 
+import sys;sys.path.append('../..')
+from utils import gather_tensor
+
 
 __all__ = ['EKCL']
+
+def ddp_ready():
+    return dist.is_available() and dist.is_initialized()
 
 class EKCL : 
     def __init__(self, args, fetcher, temperature=0.1,):
@@ -37,28 +44,43 @@ class EKCL :
 
 
     def compute_sims(self, q, k, y, ):
+        '''
+        q : bs, dim
+        k : bs+C+C, dim 
+        y : bs+C+C
+        '''
+        bs = q.shape[0]
 
         counts = y.bincount().to(q.device) # (C)
-        k_sims = q@k.T/self.tau # (bs+C+C, bs+C+C) 
-        mask = y.unsqueeze(1) == y.unsqueeze(0) # (bs+C+C, bs+C+C)
-        num = torch.logsumexp(k_sims * mask.masked_fill(mask==0, float('-inf')),dim=1)
-        den = torch.log(torch.sum(torch.exp(k_sims * mask.masked_fill(mask==1, float('-inf')))/counts[y].reshape(1,q.shape[0]), dim=-1))
+        k_sims = q@k.T/self.tau # (bs, bs+C+C) 
+        positive_mask = y[:bs].unsqueeze(1) == y.unsqueeze(0) # (bs, bs+C+C)
 
-        loss = -(num - den)/counts[y].reshape(1,q.shape[0])
+        negative_mask = ~positive_mask # (bs, bs+C+C)
+        # k_sims -> bs, bs+C+C, counts[y].reshape(1,-1) -> (1, bs+C+C), 
+        norm = counts[y].reshape(1,-1) if self.args.balanced_cl else 1 
+        den = torch.log(torch.sum(torch.exp(k_sims.masked_fill(positive_mask, float('-inf')))/ norm, dim=-1) ) # bs only negatives
+        num = torch.logsumexp(k_sims.masked_fill(negative_mask,float('-inf')),dim=1) # bs ]
+        
+        norm = counts[y[:bs]].reshape(bs) if self.args.balanced_cl else 1 
+        loss = -(num-den) / norm 
 
         return loss.mean()
         
-    def __call__(self, q, y, weight, centers ,model, aligner=None, requires_grad=False, k=None, ):
-        y = torch.concat([y, torch.arange(weight.shape[0]).repeat(2).to(q.device)])
-        q = torch.concat([q,weight,centers],dim=0)
-        if k is None :
-            k_pairs, _ = self.fetch_positive(y, self.args.kcl_k)
+    def __call__(self, q, y, weight, centers ,model, aligner=None, requires_grad=False, k_imgs=None, ):
+        if k_imgs is None :
+            k_imgs, _ = self.fetch_positive(y, self.args.kcl_k)
         func = torch.autograd.enable_grad if requires_grad else torch.inference_mode
         with func():
-            k_features = self.process_positives(k_pairs, model, aligner)
-        k_centers = spherical_frechet_mean(k_features)
-        loss = self.compute_sims(q, k=k_centers, y=y)
-        return loss, k
+            k_features = self.process_positives(k_imgs, model, aligner)
+        q_ = gather_tensor(q) if self.args.world_size>1 else q # bs, dim
+        y_ = gather_tensor(y) if self.args.world_size>1 else y # bs
+        k_ = gather_tensor(spherical_frechet_mean(k_features)) if self.args.world_size>1 else spherical_frechet_mean(k_features)
+        # bs, dim 
+        y_ = torch.concat([y_, torch.arange(weight.shape[0]).repeat(2).to(q.device)]) # bs+C+C
+        k_ = torch.concat([k_,weight, centers] , dim=0) # bs+C+C, dim
+
+        loss = self.compute_sims(q_, k_, y_)
+        return loss, k_imgs
 
 
 def spherical_frechet_mean(X, max_iters=20, tol=1e-6, step=1.0, eps=1e-7):

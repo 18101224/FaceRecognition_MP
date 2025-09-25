@@ -14,7 +14,7 @@ from .eval_quality import *
 from .pushover import send_message
 from .epx_log import get_exp_id
 from .interpolation import calculate_class_centers, slerp_ema
-from .DDP import sync_scalar, concat_all_gather, sync_defaultdict
+from .DDP import sync_scalar, concat_all_gather, sync_defaultdict, gather_tensor
 from .visualize import crop_to_square_grid
 from facenet_pytorch import MTCNN
 from .grad import measure_grad
@@ -22,7 +22,7 @@ from .grad import measure_grad
 __all__ = ['get_acc', 'get_macro_acc', 'get_norm', 'get_pd', 'save_pd', 'save_pkl', 
 'get_mem', 'get_dict', 'save_dict', 'sync', 'sync_tensor', 'torchload', 'get_grads',
  'calculate_class_centers', 'slerp_ema', 'sync_scalar', 'concat_all_gather', 'get_ldmk',
-  'crop_to_square_grid', 'get_exp_id', 'measure_grad', 'sync_defaultdict']
+  'crop_to_square_grid', 'get_exp_id', 'measure_grad', 'sync_defaultdict', 'gather_tensor']
 
 def get_grads(obj):
     """

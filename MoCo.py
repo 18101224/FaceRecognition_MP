@@ -96,6 +96,13 @@ def get_moco(args, model, loader, aligner=None):
 def get_args():
     args = ArgumentParser()
 
+    # distributed setting 
+    args.add_argument('--world_size', type=int, default=1)
+    args.add_argument('--local_rank', type=int, default=None)
+    args.add_argument('--rank', type=int, default=None)
+    args.add_argument('--num_workers', type=int, default=0)
+    args.add_argument('--use_tf', default=False)
+
     # training hyperparameters 
     args.add_argument('--learning_rate', type=float, required=True)
     args.add_argument('--batch_size', type=int, required=True)
@@ -117,12 +124,6 @@ def get_args():
     args.add_argument('--feature_branch', default=False)
     args.add_argument('--feature_module', default=False, help='deepcomplex_depth, residual_depth')
 
-    # distributed setting 
-    args.add_argument('--world_size', type=int, default=1)
-    args.add_argument('--local_rank', type=int, default=None)
-    args.add_argument('--rank', type=int, default=None)
-    args.add_argument('--num_workers', type=int, default=0)
-    args.add_argument('--use_tf', default=False)
 
     # CL args
     args.add_argument('--loss', type=str, default='CE', help='first argument CE KBCL KCL second option ETF ex KCL_ETF')
@@ -137,6 +138,8 @@ def get_args():
     args.add_argument('--moco_k', type=int, default=2)
     args.add_argument('--etf_statistics', default=False)
     args.add_argument('--k_grad', default=False)
+    args.add_argument('--balanced_cl', default=False)
+    
     # logging args 
     args.add_argument('--measure_grad', default=False)
     args.add_argument('--debug', default=False)
@@ -226,7 +229,7 @@ class Trainer:
         # calc temporal class centers 
         if include(self.args.loss, ['EKCL']):
             cl_loss,k = self.ekcl(q,label,weight=self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T
-            , centers=now_mean, model=self.model if self.args.world_size==1 else self.model.module, aligner=self.aligner, requires_grad=self.args.k_grad, k=k)
+            , centers=now_mean, model=self.model if self.args.world_size==1 else self.model.module, aligner=self.aligner, requires_grad=self.args.k_grad, k_imgs=k)
             k_label = None 
         elif include(self.args.loss, ['KCL', 'KBCL']):
 
@@ -289,7 +292,7 @@ class Trainer:
                 self.moco.enqueue(img, label, ldmk)
             
         if self.args.world_size > 1 : 
-            total_acc = sync_scalar(total_acc, torch.device('cuda'))
+            total_acc = sync_scalar(total_acc)
             loss_for_log = sync_defaultdict(loss_for_log, N=len(self.train_loader.dataset), normalize=False)
         else: 
             for key, value in loss_for_log.items():
@@ -324,11 +327,11 @@ class Trainer:
                 balanced_acc += get_acc(logit, label)*label.shape[0]
 
         if self.args.world_size > 1 :
-            total_loss = sync_scalar(total_loss, torch.device('cuda'))
-            total_acc = sync_scalar(total_acc, torch.device('cuda'))
+            total_loss = sync_scalar(total_loss)
+            total_acc = sync_scalar(total_acc)
             dist.all_reduce(total_macro_acc, op=dist.ReduceOp.SUM)
-            balanced_loss = sync_scalar(balanced_loss, torch.device('cuda')) if self.balanced_loader is not None else 0
-            balanced_acc = sync_scalar(balanced_acc, torch.device('cuda')) if self.balanced_loader is not None else 0
+            balanced_loss = sync_scalar(balanced_loss) if self.balanced_loader is not None else 0
+            balanced_acc = sync_scalar(balanced_acc) if self.balanced_loader is not None else 0
 
         N = len(self.valid_loader.dataset) 
         NB = len(self.balanced_loader.dataset) if self.balanced_loader is not None else 1

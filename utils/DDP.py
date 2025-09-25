@@ -1,8 +1,58 @@
 import torch
 import torch.distributed as dist
 
-__all__ = ['sync_scalar', 'concat_all_gather', 'sync_defaultdict']
+__all__ = ['sync_scalar', 'concat_all_gather', 'sync_defaultdict', 'gather_tensor']
 
+
+class GatherLayer(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, feats, mask):
+        world_size = dist.get_world_size()
+        feats_list = [torch.zeros_like(feats) for _ in range(world_size)]
+        mask_list = [torch.zeros_like(mask) for _ in range(world_size)]
+        dist.all_gather(feats_list, feats)
+        dist.all_gather(mask_list, mask)
+        ctx.world_size = world_size 
+        ctx.save_for_backward(mask)
+        return torch.cat(feats_list, dim=0), torch.cat(mask_list, dim=0)
+    
+    @staticmethod
+    def backward(ctx, grad_feats, grad_mask):
+        (local_mask, ) = ctx.saved_tensors 
+        world = ctx.world_size 
+        rank = dist.get_rank()
+        max_n = local_mask.numel()
+        start = rank * max_n 
+        end = (rank+1) * max_n 
+        g_local = grad_feats[start:end].clone()
+        g_local[~local_mask] = 0.0 
+        return g_local, None 
+
+def pad_to_max_local(t, pad_value=0.0):
+    world_size = dist.get_world_size()
+    local_n = torch.tensor([t.shape[0]], device=t.device)
+    sizes = [torch.zeros_like(local_n) for _ in range(world_size)]
+    dist.all_gather(sizes, local_n)
+    sizes = torch.stack(sizes)
+    max_n = int(sizes.max().item())
+    if t.size(0) < max_n :
+        pad_rows = max_n - t.size(0)
+        pad = torch.full((pad_rows, t.size(1)), pad_value, device=t.device)
+        t = torch.cat([t, pad], dim=0)
+        mask = torch.cat([torch.ones(local_n.item(), device=t.device, dtype=torch.bool),
+                          torch.zeros(pad_rows, device=t.device, dtype=torch.bool)], dim=0)
+    else:
+        mask = torch.ones(max_n, device=t.device, dtype=torch.bool)
+    return t, mask, max_n 
+
+def autograd_all_gather_uneven(feats, pad_value=0.0):
+    feats_padded, mask, _ = pad_to_max_local(feats, pad_value=pad_value)
+    feats_all, mask_all = GatherLayer.apply(feats_padded, mask)
+    return feats_all, mask_all 
+
+def gather_tensor(tensor, pad_value=0.0):
+    X_all, X_mask = autograd_all_gather_uneven(tensor, pad_value=pad_value)
+    return X_all[X_mask]
 
 def sync_defaultdict(dictionary, N,normalize: bool = False):
     for key, value in dictionary.items():
