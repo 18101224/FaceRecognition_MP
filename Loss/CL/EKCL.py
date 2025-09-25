@@ -35,10 +35,11 @@ class EKCL :
         '''
         bs,k,_,h,w = k_pairs.shape
         imgs = k_pairs.reshape(-1,3,h,w)
-        if aligner is not None:
-            _,_,kp,_,_,_ = aligner(imgs)
-        else:
-            kp = None
+        with torch.inference_mode():
+            if aligner is not None:
+                _,_,kp,_,_,_ = aligner(imgs)
+            else:
+                kp = None
         logit, feature, centers = model(imgs, keypoint=kp, features=True)
         return feature.reshape(bs,k,-1)
 

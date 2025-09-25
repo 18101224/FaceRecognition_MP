@@ -169,7 +169,7 @@ def torchload(path,weights_only,map_location=None):
         return torch.load(path,map_location=map_location)
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def get_ldmk(img, aligner):
     _,_,ldmk,_,_,_ = aligner(img)
     return ldmk 

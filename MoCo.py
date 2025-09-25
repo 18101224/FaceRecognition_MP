@@ -306,7 +306,7 @@ class Trainer:
         return total_acc / len(self.train_loader.dataset), loss_for_log
 
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def run_valid_epoch(self):
         self.model.eval()
         total_loss = 0
@@ -413,7 +413,7 @@ class Trainer:
             except Exception as _e:
                 pass
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def save_angle_mat(self, epoch):
         if not (self.args.world_size == 1 or self.args.rank == 0):
             return
