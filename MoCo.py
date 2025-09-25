@@ -202,7 +202,7 @@ class Trainer:
         self.best_loss = float('inf')
         self.best_acc = -float('inf')
     
-    @torch.no_grad()
+    @torch.inference_mode()
     def init_weight(self):
         mean = compute_class_spherical_means(self.train_loader_wo_aug, self.model if self.args.world_size==1 else \
              self.model.module, device=torch.device('cuda'), num_classes=self.args.num_classes, aligner=self.aligner)
@@ -267,7 +267,7 @@ class Trainer:
                 loss_for_log['ETF']+=etf_loss.detach().item()*bs
         return logit, self.process_loss(temp_loss), k, k_label
     
-    @torch.no_grad()
+    @torch.inference_mode()
     def run_valid_forward(self, img, label, ldmk=None):
         logit = self.model(img, keypoint=ldmk, features=False)
         loss = torch.nn.functional.cross_entropy(logit, label)
