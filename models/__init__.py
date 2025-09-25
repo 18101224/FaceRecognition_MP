@@ -260,6 +260,9 @@ class ImbalancedModel(nn.Module):
         if self.img_size == 224 : 
             x = nn.functional.interpolate(x, size=(224,224), mode='bilinear', align_corners=False)
 
+        if keypoint is not None : 
+            keypoint = keypoint.clone().detach()
+            
         if hasattr(self, 'input_dist') and self.input_dist is not False:
             mean = self.input_dist[0].reshape(1,3,1,1)
             std = torch.clamp(self.input_dist[1], min=1e-6).reshape(1,3,1,1)

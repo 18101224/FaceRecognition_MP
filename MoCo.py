@@ -202,7 +202,7 @@ class Trainer:
         self.best_loss = float('inf')
         self.best_acc = -float('inf')
     
-    @torch.inference_mode()
+    @torch.no_grad()
     def init_weight(self):
         mean = compute_class_spherical_means(self.train_loader_wo_aug, self.model if self.args.world_size==1 else \
              self.model.module, device=torch.device('cuda'), num_classes=self.args.num_classes, aligner=self.aligner)

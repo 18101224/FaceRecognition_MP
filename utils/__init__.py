@@ -172,4 +172,4 @@ def torchload(path,weights_only,map_location=None):
 @torch.inference_mode()
 def get_ldmk(img, aligner):
     _,_,ldmk,_,_,_ = aligner(img)
-    return ldmk 
+    return ldmk
