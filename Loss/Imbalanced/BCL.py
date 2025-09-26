@@ -92,9 +92,7 @@ class BCLLoss:
         processed_features : batch_size, dim 
         '''
         ce_loss = self.criterion_ce(logits, targets)
-        bs = targets.shape[0]
-        _, f1, f2 = torch.split(features, [bs,bs,bs], dim=0)
-        features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
+
         if processed_features is not None:
             cls_loss = self.criterion_scl(targets=targets, features=processed_features, centers1=centers)
             rep_loss = self.criterion_scl(targets=targets, features=features)

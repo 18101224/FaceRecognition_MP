@@ -272,7 +272,7 @@ def get_multi_view_transforms(args, train, model_type):
         transforms.ToTensor(),
         transforms.Normalize(mean=mean.tolist(), std=std.tolist())
     ])
-    if args.use_view : 
+    if args.use_view and train : 
         return [get_fer_transforms(train, model_type), deepcopy(view_tf), deepcopy(view_tf)]
     else:
         return get_fer_transforms(train, model_type)
