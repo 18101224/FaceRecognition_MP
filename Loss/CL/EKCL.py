@@ -18,14 +18,16 @@ class EKCL :
         self.tau = temperature
         self.fetcher = fetcher
         self.args = args
-
+        if self.args.k_meeting is not None : 
+            self.qk, self.kk = list(map(int,list(self.args.k_meeting.split('_'))))
+            
     @torch.no_grad()
     def fetch_positive(self,y,k):
         '''
         returns bs, k, 3, h, w
         '''
 
-        return self.fetcher.sample_pairs(y,k,num_workers=self.args.num_workers)
+        return self.fetcher.sample_pairs(y,k)
 
 
     def process_positives(self, k_pairs, model, aligner=None):
@@ -67,15 +69,15 @@ class EKCL :
 
         return loss.mean()
         
-    def __call__(self, q, y, weight, centers ,model, aligner=None, requires_grad=False, k_imgs=None, ):
+    def __call__(self, features, y, weight, centers ,model, aligner=None, requires_grad=False, k_imgs=None):
         if k_imgs is None :
             k_imgs, _ = self.fetch_positive(y, self.args.kcl_k)
-        func = torch.autograd.enable_grad if requires_grad else torch.inference_mode
+        func = torch.autograd.enable_grad if requires_grad else torch.no_grad
         with func():
-            k_features = self.process_positives(k_imgs, model, aligner)
-        q_ = gather_tensor(q) if self.args.world_size>1 else q # bs, dim
+            k_features = self.process_positives(k_imgs, model, aligner) # bs, k, dim 
+        q_ = gather_tensor(features) if self.args.world_size>1 else features # bs, dim
         y_ = gather_tensor(y) if self.args.world_size>1 else y # bs
-        k_ = gather_tensor(spherical_frechet_mean(k_features)) if self.args.world_size>1 else spherical_frechet_mean(k_features)
+        k_ = gather_tensor(spherical_frechet_mean(k_features)) if self.args.world_size>1 else spherical_frechet_mean(k_features) # bs+C+C, dim 
         # bs, dim 
 
         y_ = torch.concat([y_, torch.arange(weight.shape[0]).repeat(int(bool(centers is not None))+int(bool(weight is not None))).to(q.device)]) if centers is not None and weight is not None else y_ # bs+C+C 
@@ -83,6 +85,7 @@ class EKCL :
         k_ = torch.concat([k_, centers], dim=0) if centers is not None else k_ # bs+C+C, dim 
         loss = self.compute_sims(q_, k_, y_)
         return loss, k_imgs
+
 
 
 def spherical_frechet_mean(X, max_iters=20, tol=1e-6, step=1.0, eps=1e-7):

@@ -2,7 +2,7 @@ import torch
 from .BCL import BCLLoss
 from .ECE import get_angle_loss, weight_scheduling, ECELoss
 from .SLERP import spherical_frechet_mean
-
+from torch import nn 
 
 __all__ = ['BCLLoss', 'get_angle_loss', 'weight_scheduling', 'ECELoss', 'calculate_class_mean']
 

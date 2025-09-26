@@ -2,13 +2,13 @@ import torch
 from torch import nn 
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
-from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, get_fer_transforms, ClassBatchSampler
+from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, get_fer_transforms, ClassBatchSampler, get_multi_view_transforms
 from models import ImbalancedModel, compute_class_spherical_means, slerp, dim_dict, calc_class_mean
 from torch import distributed as dist
 from argparse import ArgumentParser
-from Loss import Moco, KCL, compute_etf_loss, EKCL
+from Loss import Moco, KCL, compute_etf_loss, EKCL, get_cl_loss
 from opt import SAM
-from torch.optim.lr_scheduler import ExponentialLR
+from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR
 from tqdm import tqdm
 from utils import get_acc, get_exp_id, get_ldmk, sync_scalar, measure_grad, concat_all_gather, sync_defaultdict, get_mem, get_macro_acc
 from analysis import plot_angle_matrix
@@ -18,7 +18,8 @@ from datetime import timedelta
 from aligners import get_aligner
 from copy import deepcopy
 import os 
-import wandb
+import shutil
+
 
 
 def include(loss, losses):
@@ -30,27 +31,33 @@ def include(loss, losses):
     return False 
 
 def get_model(args):
-    model_params = {
-        'num_classes': args.num_classes, 
-        'model_type': args.model_type, 
-        'feature_branch': args.feature_branch,
-        'feature_module': args.feature_module, 
-        'regular_simplex': False, 
-        'cos': True, 
-        'learnable_input_dist': False, 
-        'input_layer': False, 
-        'freeze_backbone': False, 
-        'remain_backbone': False, 
-        'decomposition': False,
-        'img_size': args.img_size
-    }
-    model = ImbalancedModel(**model_params)
+    if args.ckpt_path is not None:
+        ckpt_path = os.path.join(args.ckpt_path,'latest.pth')
+        model_params = torch.load(ckpt_path, weights_only=False, map_location=torch.device('cpu'))['model_params']
+        model = ImbalancedModel(**model_params)
+        model.load_from_state_dict(ckpt_path, clear_weight=args.clear_classifier)
+    else:
+        model_params = {
+            'num_classes': args.num_classes, 
+            'model_type': args.model_type, 
+            'feature_branch': args.feature_branch,
+            'feature_module': args.feature_module, 
+            'regular_simplex': False, 
+            'cos': True, 
+            'learnable_input_dist': False, 
+            'input_layer': False, 
+            'freeze_backbone': False, 
+            'remain_backbone': False, 
+            'decomposition': False,
+            'img_size': args.img_size
+        }
+        model = ImbalancedModel(**model_params)
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if 'kprpe' in args.model_type else None
     return model.cuda() if args.world_size ==1 else DDP(model.cuda(), device_ids=[args.local_rank], find_unused_parameters=True), \
          aligner, model_params
 
 def get_loaders(args):
-    train_transform, valid_transform, train_transform_wo_aug = get_fer_transforms(train=True,model_type=args.model_type), get_fer_transforms(train=False,model_type=args.model_type), get_fer_transforms(train=False,model_type=args.model_type)
+    train_transform, valid_transform, train_transform_wo_aug = get_multi_view_transforms(args, train=True,model_type=args.model_type), get_multi_view_transforms(args, train=False,model_type=args.model_type), get_multi_view_transforms(args, train=False,model_type=args.model_type)
     train_dataset, valid_dataset, train_dataset_wo_aug = FER(args=args, train=True, transform=train_transform, idx=False), FER(args=args, train=False, transform=valid_transform, idx=False), FER(args=args, train=False, transform=train_transform_wo_aug, idx=False, balanced=False)
     balanced_dataset = FER(args,transform=valid_transform, train=False, idx=False, balanced=True) if args.dataset_name == 'RAF-DB' else None
     if args.world_size > 1 :
@@ -77,7 +84,7 @@ def get_loaders(args):
 
 def get_optimizer(args, model):
     opt = SAM(model.parameters(),base_optimizer=torch.optim.AdamW,lr=args.learning_rate,weight_decay=args.weight_decay)
-    scheduler = ExponentialLR(opt,gamma=0.98)
+    scheduler = ExponentialLR(opt,gamma=0.98) if args.scheduler=='exp' else CosineAnnealingLR(opt,T_max=args.n_epochs,eta_min=args.learning_rate/100)
     return opt, scheduler
 
 def get_moco(args, model, loader, aligner=None):
@@ -116,6 +123,7 @@ def get_args():
     args.add_argument('--num_classes', type=int, default=7)
     args.add_argument('--use_sampler', default=False)
     args.add_argument('--img_size', type=int, choices=[112,224], default=112)
+    args.add_argument('--use_view', default=False)
 
     # ckpts
     args.add_argument('--mean_weight', type=str, default=None)
@@ -124,6 +132,8 @@ def get_args():
     args.add_argument('--model_type', type=str, choices=['ir50', 'kprpe12m', 'kprpe4m', 'fmae_small', 'Pyramid_ir50'], required=True)
     args.add_argument('--feature_branch', default=False)
     args.add_argument('--feature_module', default=False, help='deepcomplex_depth, residual_depth')
+    args.add_argument('--ckpt_path', type=str, default=None )
+    args.add_argument('--clear_classifier', default=False)
 
 
     # CL args
@@ -173,11 +183,11 @@ class Trainer:
         if include(self.args.loss, ['KCL', 'KBCL']):
             self.moco, self.kcl = get_moco(args, self.model, self.train_loader_wo_aug,aligner=self.aligner)
         if include(self.args.loss, ['EKCL']):
-            self.ekcl = EKCL(args, ClassBatchSampler(args, transform=get_fer_transforms(train=True, model_type=args.model_type),idx=False))
-        self.init_weight()
+            self.ekcl = EKCL(args,)
+        self.init_weight() if not args.loss == 'CE' else None 
         self.opt, self.scheduler = get_optimizer(args, self.model)
         self.init_logs()
-
+        self.moco, self.cl_loss = get_cl_loss(args, deepcopy(self.model if self.args.world_size==1 else self.model.module))
     
     def init_logs(self):
         if self.args.world_size == 1 or self.args.rank == 0 : 
@@ -217,10 +227,11 @@ class Trainer:
     def process_loss(self, loss):
         total_loss = 0
         for key, value in loss.items():
-            total_loss += value
+            if value is not None:
+                total_loss += value
         return total_loss
 
-    def get_cl_loss(self, q, label,c , ldmk=None, k=None, k_label=None):
+    def get_cl_loss(self, logit, q, label,c , ldmk=None, k=None):
         if self.args.utilze_class_centers:
             q_for_mu = concat_all_gather(q) if self.args.world_size > 1 else q
             label_for_mu = concat_all_gather(label) if self.args.world_size > 1 else label
@@ -231,41 +242,42 @@ class Trainer:
             self.mean[temp_mask==True] = now_mean[temp_mask==True].detach().clone()
         else:
             now_mean = None
-        weight = self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T if self.args.utilze_target_centers else None
 
-        # calc temporal class centers 
-        if include(self.args.loss, ['EKCL']):
-            cl_loss,k = self.ekcl(q,label,weight=weight
-            , centers=now_mean, model=self.model if self.args.world_size==1 else self.model.module, aligner=self.aligner, requires_grad=self.args.k_grad, k_imgs=k)
-            k_label = None
-        elif include(self.args.loss, ['KCL', 'KBCL']):
-            label = torch.cat([label, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilze_class_centers else 1)], dim=0)
-            q = torch.cat([q,now_mean,c],dim=0) if self.args.utilze_class_centers else torch.cat([q,c],dim=0)
-            k, k_label = self.moco.get_k(label, self.args.kcl_k) if k is None else (k,k_label)
-            cl_loss = self.kcl(features=q, labels=label, pos_feats=k, pos_labels=k_label)
+        weight = c if self.args.utilze_target_centers else None
 
-        return cl_loss*self.args.beta, k, k_label
+        ce_loss, cl_loss = self.cl_loss(logits=logit, features=q, y=label, weight=weight, centers=now_mean,
+         aligner=self.aligner, positive_pair=k, requires_grad=self.args.k_grad)
 
-    def run_train_forward(self, img, label, ldmk=None, k=None, k_label=None, loss_for_log=None):
+        # # calc temporal class centers 
+        # if include(self.args.loss, ['EKCL']):
+        #     cl_loss,k = self.ekcl(q,label,weight=weight
+        #     , centers=now_mean, model=self.model if self.args.world_size==1 else self.model.module, aligner=self.aligner, requires_grad=self.args.k_grad, k_imgs=k)
+        #     k_label = None
+
+        # elif include(self.args.loss, ['KCL', 'KBCL']):
+        #     label = torch.cat([label, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilze_class_centers else 1)], dim=0)
+        #     q = torch.cat([q,now_mean,c],dim=0) if self.args.utilze_class_centers else torch.cat([q,c],dim=0)
+        #     k, k_label = self.moco.get_k(label, self.args.kcl_k) if k is None else (k,k_label)
+        #     cl_loss = self.kcl(features=q, labels=label, pos_feats=k, pos_labels=k_label)
+
+        return ce_loss, cl_loss*self.args.beta, k
+
+    def run_train_forward(self, img, label, ldmk=None, k=None, loss_for_log=None):
         logit, q, c = self.model(img, keypoint=ldmk, features=True)
         temp_loss = defaultdict(float)
         bs= q.shape[0]
-        ce_loss = torch.nn.functional.cross_entropy(logit, label)
+        ce_loss, cl_loss, k = self.get_cl_loss(logit, q, label, c, ldmk, k=k)
         temp_loss['CE']=ce_loss
-        if loss_for_log is not None:
-            loss_for_log['CE']+=ce_loss.detach().item()*bs 
-        if self.args.loss =='CE' :
-            return logit, self.process_loss(temp_loss), k, k_label
-        cl_loss, k, k_label = self.get_cl_loss(q, label, c, ldmk, k, k_label)
         temp_loss['CL']=cl_loss
         if loss_for_log is not None:
             loss_for_log['CL']+=cl_loss.detach().item()*bs
+            loss_for_log['CE']+=ce_loss.detach().item()*bs 
         if include(self.args.loss, ['ETF']) :
             etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight, statistics=self.args.etf_statistics)
             temp_loss['ETF']=etf_loss
             if loss_for_log is not None:
                 loss_for_log['ETF']+=etf_loss.detach().item()*bs
-        return logit, self.process_loss(temp_loss), k, k_label
+        return logit[:label.shape[0]], self.process_loss(temp_loss), k
     
     @torch.inference_mode()
     def run_valid_forward(self, img, label, ldmk=None):
@@ -275,24 +287,27 @@ class Trainer:
             
     def run_train_epoch(self):
         self.model.train()
-
         total_acc = 0
         temp_grad = defaultdict(list)
         loss_for_log = defaultdict(float)
         for img,label in tqdm(self.train_loader, disable=self.args.world_size > 1 and self.args.rank != 0, 
          desc=f"training epoch {self.epoch} latest_acc: {(self.log['valid_acc'][-1] if len(self.log['valid_acc']) > 0 else 0):.4f} best_acc: {self.best_acc:.4f}"):
-            img, label = img.cuda(), label.cuda()
+            if isinstance(img, list) : 
+                img = torch.concat(img, dim=0)
+            img, label = img.cuda(), label.cuda() # the images are list with number-of-views 
+
             ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
-            logit, loss, k, k_label = self.run_train_forward(img, label, ldmk, k=None, k_label=None, loss_for_log=loss_for_log)
+            logit, loss, k = self.run_train_forward(img, label, ldmk, k=None, loss_for_log=loss_for_log)
             loss.backward()
             if self.args.measure_grad : 
                 temp_grad = measure_grad(self.model, 0, 0, temp_grad, layer_names=['backbone'])
             self.opt.first_step(zero_grad=True)
             with torch.no_grad():
                 total_acc += get_acc(logit,label)*label.shape[0]
-            _, loss, _ , _ = self.run_train_forward(img,label,ldmk, k=k, k_label=k_label, loss_for_log=None)
+            _, loss, _ = self.run_train_forward(img,label,ldmk, k=k, loss_for_log=None)
             loss.backward()
             self.opt.second_step(zero_grad=True)
+
             if include(self.args.loss, ['KCL', 'KBCL']):
                 self.moco.momentum_update(self.model if self.args.world_size==1 else self.model.module)
                 self.moco.enqueue(img, label, ldmk)
@@ -410,6 +425,10 @@ class Trainer:
                 final_img = os.path.join(self.save_dir, 'angle_mat', f"{str(self.epoch).zfill(4)}.png")
                 if os.path.exists(final_img):
                     wandb.log({'final/angle_matrix': wandb.Image(final_img), 'final_epoch': self.epoch})
+                    angle_dir = os.path.join(self.save_dir, 'angle_mat')
+                    if os.path.isdir(angle_dir):
+                        shutil.make_archive(os.path.join(self.save_dir, 'angle_mat'), 'zip', root_dir=self.save_dir, base_dir='angle_mat')
+                        shutil.rmtree(angle_dir)
             except Exception as _e:
                 pass
 

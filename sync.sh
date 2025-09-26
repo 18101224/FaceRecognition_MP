@@ -12,8 +12,9 @@ SERVERS=(
     "mine1:/home/mj/rl/"
     
 )
+
 SERVERS=(
-    "server7:/home/gpuadmin/mj/rl/"
+    "server6:/home/gpuadmin/mj/rl/"
 )
 # Exclude checkpoint directory from syncing
 
@@ -21,12 +22,15 @@ SERVERS=(
 for SERVER in "${SERVERS[@]}"; do
 
     rsync -avz --delete --checksum $EXCLUDE_OPTS "$SOURCE_DIR" "$SERVER" &
+    echo "synchroized to $SERVER"
+
 done 
 
+exit 0
 # wait
 # echo "****************************************"
 # echo "*                                      *"
-# echo "*      🚀🚀 SYNCHRONIZATION DONE 🚀🚀      *"
+# echo "*   🚀🚀 SYNCHRONIZATION DONE 🚀🚀     *"
 # echo "*                                      *"
 # echo "****************************************"
 # echo ""

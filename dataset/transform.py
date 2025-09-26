@@ -5,8 +5,13 @@ import random
 import numpy as np
 from .augmentations import ImageNetPolicy, CIFAR10Policy, Cutout, GaussianBlur
 from PIL import ImageFilter
+from timm.data import resolve_data_config
+from timm.data.transforms_factory import create_transform
+from .augmentations import rand_augment_transform
+from copy import deepcopy
 
-__all__ = ['get_transform', 'get_imagenet_transforms', 'random_masking', 'point_block_mask','get_fer_transforms', 'masking_pair']
+__all__ = ['get_transform', 'get_imagenet_transforms', 'random_masking',
+ 'point_block_mask','get_fer_transforms', 'masking_pair', 'get_multi_view_transforms']
 
 cifar10_mean = (0.4914, 0.4822, 0.4465)
 cifar10_std = (0.2023, 0.1994, 0.2010)
@@ -16,6 +21,7 @@ inat_mean = (0.466, 0.471, 0.380)
 inat_std = (0.195, 0.194, 0.192)
 fer_mean = [ [0.5] * 3, imgnet_mean]
 fer_std = [ [0.5] * 3, imgnet_std]
+
 def include(loss, loss_types):
     losses = loss.split('_')
     for loss_type in loss_types:
@@ -247,6 +253,30 @@ def get_fer_transforms(train,model_type):
             transforms.ToTensor(),
             transforms.Normalize(mean=mean, std=std)
         ])
+
+def get_multi_view_transforms(args, train, model_type):
+    mean=[0.485, 0.456, 0.406] if 'kprpe' not in model_type else [0.5] * 3
+    std=[0.229, 0.224, 0.225] if 'kprpe' not in model_type else [0.5] * 3
+    mean = torch.tensor(mean)
+    std = torch.tensor(std)
+    ra = rand_augment_transform(
+        config_str='rand-m9-mstd0.5',
+        hparams={
+            'transrate_const': int(args.img_size*0.5),
+            'img_min' : (mean * 255).int().tolist() 
+        }
+    )
+    view_tf = transforms.Compose([
+        transforms.Resize(args.img_size),
+        ra, 
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean.tolist(), std=std.tolist())
+    ])
+    if args.use_view : 
+        return [get_fer_transforms(train, model_type), deepcopy(view_tf), deepcopy(view_tf)]
+    else:
+        return get_fer_transforms(train, model_type)
+
 
 def gaussian_prob(distance, sigma=1.5):
     return torch.exp(-0.5 * (distance / sigma) ** 2)

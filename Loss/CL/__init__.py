@@ -1,11 +1,37 @@
 import torch
+from torch import nn 
 import torch.nn.functional as F
 import torch.distributed as dist
 import math
 from .KCL import KCL
 from .ETF import compute_etf_loss
 from .EKCL import EKCL
-__all__ =  ['Moco', 'KCL', 'compute_etf_loss', 'EKCL']
+from .BCL import BCL
+import sys 
+
+sys.path.append('../..')
+from dataset import ClassBatchSampler, get_fer_transforms
+from models import dim_dict
+__all__ =  ['Moco', 'KCL', 'compute_etf_loss', 'EKCL', 'BCL', 'get_cl_loss']
+
+
+def get_cl_loss(args, model=None):
+    if args.loss == 'CE' : 
+        return None, CE()
+    elif args.loss == 'EKCL' :
+        return None, EKCL(args, fetcher =  ClassBatchSampler(args, transform=get_fer_transforms(train=True, model_type=args.model_type),idx=False,num_workers=args.num_workers)
+        , temperature=args.temperature)
+    elif args.loss == 'KCL' :
+        return Moco(args,model, num_classes=args.num_classes,\
+             dim=dim_dict[args.model_type][-1 if args.feature_branch else 0],device=torch.device('cuda'), init_queue=None ), KCL(temperature=args.temperature,)
+    elif args.loss =='BCL' :
+        return None, BCL(cls_num_list=None, temperature=args.temperature)
+class CE:
+    def __init__(self):
+        self.fn = nn.CrossEntropyLoss().to(torch.device('cuda'))
+    def __call__(self, logits, y, **kwargs): 
+        return self.fn(logits,y), torch.tensor(0.0, device=logits.device, requires_grad=True) # ce, cl 
+        
 
 class Moco:
     def __init__(self, args, key_encoder, num_classes, dim, device='cuda', init_queue=None):

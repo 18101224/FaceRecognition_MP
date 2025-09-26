@@ -241,6 +241,12 @@ class ImbalancedModel(nn.Module):
         self.decomposition = OrthogonalDecomposer(dim_in) if decomposition=='Cayley' else None
 
         self.img_size=img_size
+    
+    def load_from_state_dict(self, ckpt_path, clear_weight=True):
+        state_dict = torch.load(ckpt_path, map_location=torch.device('cpu'),weights_only=False)['model_state_dict']
+        self.load_state_dict(state_dict)
+        if clear_weight : 
+            self.weight.data = torch.randn((self.weight.shape[0], self.weight.shape[1])).uniform_(-1,1).renorm(2,1,1e-5).mul_(1e5)
         
     def freeze_backbone(self):
         for p in self.backbone.parameters():
@@ -279,7 +285,6 @@ class ImbalancedModel(nn.Module):
         if isinstance(z, tuple):
             z = z[0]
 
-
         z = nn.functional.normalize(z, dim=-1, eps=1e-6) if self.cos else z
 
         z_ = nn.functional.normalize(self.feature_module(z), dim=-1, eps=1e-6) if self.feature_module is not False else z 
@@ -304,7 +309,7 @@ class ImbalancedModel(nn.Module):
         if features : 
             centers = nn.functional.normalize(self.head_fc(weight.T), dim=-1) if self.feature_branch else weight.T
             processed_feat = nn.functional.normalize(self.head(z_), dim=-1) if self.feature_branch else z_
-            return logit, processed_feat , centers 
+            return logit, processed_feat , centers
         else:
             return logit 
     
