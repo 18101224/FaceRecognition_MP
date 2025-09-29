@@ -1,17 +1,15 @@
 import torch 
 from torch.nn import functional as F
-from torch import dist 
+
 import sys;sys.path.append('../..')
-from utils import gather_tensor
+
 
 
 __all__ = ['EKCL']
 
-def ddp_ready():
-    return dist.is_available() and dist.is_initialized()
-
-class EKCL : 
+class EKCL(torch.nn.Module) : 
     def __init__(self, args, fetcher, temperature=0.1,):
+        super().__init__()
         '''
         args should have num_workers
         '''
@@ -21,13 +19,13 @@ class EKCL :
         if self.args.k_meeting is not None : 
             self.qk, self.kk = list(map(int,list(self.args.k_meeting.split('_'))))
             
-    @torch.no_grad()
+
     def fetch_positive(self,y,k):
         '''
         returns bs, k, 3, h, w
         '''
 
-        return self.fetcher.sample_pairs(y,k)
+        return self.fetcher.sample_pairs(y,k) if self.args.world_size==1 else self.fetcher.sample_pairs_dist_gathered(y,k)
 
 
     def process_positives(self, k_pairs, model, aligner=None):
@@ -37,12 +35,12 @@ class EKCL :
         '''
         bs,k,_,h,w = k_pairs.shape
         imgs = k_pairs.reshape(-1,3,h,w)
-        with torch.inference_mode():
+        with torch.no_grad():
             if aligner is not None:
                 _,_,kp,_,_,_ = aligner(imgs)
             else:
                 kp = None
-        logit, feature, centers = model(imgs, keypoint=kp, features=True)
+        _, feature, _ = model(imgs, keypoint=kp, features=True)
         return feature.reshape(bs,k,-1)
 
 
@@ -52,15 +50,20 @@ class EKCL :
         k : bs+C+C, dim 
         y : bs+C+C
         '''
+
         bs = q.shape[0]
 
         counts = y.bincount().to(q.device) # (C)
+
         k_sims = q@k.T/self.tau # (bs, bs+C+C) 
+
+
         positive_mask = y[:bs].unsqueeze(1) == y.unsqueeze(0) # (bs, bs+C+C)
 
         negative_mask = ~positive_mask # (bs, bs+C+C)
         # k_sims -> bs, bs+C+C, counts[y].reshape(1,-1) -> (1, bs+C+C), 
         norm = counts[y].reshape(1,-1) if self.args.balanced_cl else 1 
+
         den = torch.log(torch.sum(torch.exp(k_sims.masked_fill(positive_mask, float('-inf')))/ norm, dim=-1) ) # bs only negatives
         num = torch.logsumexp(k_sims.masked_fill(negative_mask,float('-inf')),dim=1) # bs ]
         
@@ -69,22 +72,34 @@ class EKCL :
 
         return loss.mean()
         
-    def __call__(self, features, y, weight, centers ,model, aligner=None, requires_grad=False, k_imgs=None):
-        if k_imgs is None :
-            k_imgs, _ = self.fetch_positive(y, self.args.kcl_k)
-        func = torch.autograd.enable_grad if requires_grad else torch.no_grad
-        with func():
-            k_features = self.process_positives(k_imgs, model, aligner) # bs, k, dim 
-        q_ = gather_tensor(features) if self.args.world_size>1 else features # bs, dim
-        y_ = gather_tensor(y) if self.args.world_size>1 else y # bs
-        k_ = gather_tensor(spherical_frechet_mean(k_features)) if self.args.world_size>1 else spherical_frechet_mean(k_features) # bs+C+C, dim 
-        # bs, dim 
+    def forward(self, logits, features, y, weight, centers ,model, aligner=None, requires_grad=False, positive_pair=None, **kwargs):
+        if positive_pair is None :
+            positive_pair = self.fetch_positive(y, self.args.kcl_k)
+        
+        ce_loss =torch.nn.functional.cross_entropy(logits, y)
 
-        y_ = torch.concat([y_, torch.arange(weight.shape[0]).repeat(int(bool(centers is not None))+int(bool(weight is not None))).to(q.device)]) if centers is not None and weight is not None else y_ # bs+C+C 
-        k_ = torch.concat([k_, weight], dim=0 ) if weight is not None else k_ # bs+C+C, dim 
-        k_ = torch.concat([k_, centers], dim=0) if centers is not None else k_ # bs+C+C, dim 
-        loss = self.compute_sims(q_, k_, y_)
-        return loss, k_imgs
+        func = torch.autograd.enable_grad if requires_grad else torch.no_grad
+        model = model.module if self.args.world_size > 1 else model
+
+
+
+        k_features = self.process_positives(positive_pair, model, aligner) # bs, k, dim 
+
+        k_features = spherical_frechet_mean(k_features)
+
+        # bs, dim 
+        if centers is not None or weight is not None :
+            y = torch.concat([y, torch.arange(weight.shape[0]).repeat(int(bool(centers is not None))+int(bool(weight is not None))).to(y.device)])
+            to_concat = [k_features]
+            if weight is not None : 
+                to_concat.append(weight)
+            if centers is not None : 
+                to_concat.append(centers)
+            k_features = torch.concat(to_concat, dim=0)
+
+        cl_loss = self.compute_sims(features, k_features, y)
+
+        return ce_loss, cl_loss,  positive_pair
 
 
 

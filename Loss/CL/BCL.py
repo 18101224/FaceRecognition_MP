@@ -87,7 +87,7 @@ class BCL:
         self.criterion_ce = LogitAdjust(cls_num_list) 
         self.criterion_scl = BalSCL(cls_num_list, temperature)
     
-    def __call__(self,logits, features, y, weight=None, centers=None, aligner=None, positive_pair=None, requires_grad=False):
+    def __call__(self,logits, features, y, weight=None, centers=None, aligner=None, positive_pair=None, requires_grad=False, **kwargs):
         '''
         features : 2*bs, dim ( concat original and view features)
         centers : C, dim 

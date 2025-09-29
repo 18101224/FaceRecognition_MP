@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn.functional as F
+from .Moco import Moco
+import sys 
+sys.path.append('../..')
+sys.path.append('..')
+from models import dim_dict, compute_class_spherical_means
+from utils import gather_tensor 
+from torch import nn 
 
-
-
-class KCL:
+class KCL(nn.Module):
     """
     K-positive Contrastive Loss (멀티-포지티브 InfoNCE/SupCon 일반화)
     
@@ -22,68 +27,61 @@ class KCL:
     - include_positives_in_denominator: True이면 외부 positive를 분모에 포함 (원래 SupCon 방식)
     """
     
-    def __init__(self,  
+    def __init__(self,
+                 args, 
+                 key_encoder, 
                  temperature: float = 0.07,
-                 include_positives_in_denominator: bool = False,    # 외부 positive를 분모에 포함할지
-                 exclude_same_class_from_negatives: bool = True,    # 배치 내 같은 클래스를 negative에서 제외할지
-                 use_batch_negatives: bool = True,
-                 reduction: str = "mean"):
-        """
-        Initialize K-positive Contrastive Loss (KCL).
+                 init_queue=None
+                 ):
+        super().__init__()
+        self.tau = float(temperature)                              # InfoNCE 온도 파라미터                             # 손실 축약 방식
+        self.moco = Moco(args, key_encoder=key_encoder, num_classes=args.num_classes,
+         dim=dim_dict[args.model_type][-1 if args.feature_branch else 0], device=torch.device('cuda'), init_queue=init_queue) 
+        self.args = args 
+        self.ce_loss = torch.nn.CrossEntropyLoss().to(torch.device('cuda'))
 
-        Arguments
-        - temperature (float): Softmax temperature τ used to scale all
-          similarity scores. Smaller values sharpen the distribution.
-        - include_positives_in_denominator (bool): When True, all positive
-          similarities used in the numerator are also included in the
-          denominator (SupCon-style). When False, the denominator uses only
-          negatives (and optionally batch negatives depending on the flags).
-        - exclude_same_class_from_negatives (bool): If True, samples that share
-          the same label as the anchor are excluded from the negative set when
-          building the denominator. If False, all non-self samples can act as
-          negatives.
-        - use_batch_negatives (bool): If True, additionally use in-batch
-          negatives (anchors from other samples in the batch) in the
-          denominator. If False, only external negatives (if any) are used.
-        - reduction (str): Aggregation over the batch. 'mean' to average the
-          per-sample losses, 'sum' to sum them.
 
-        Attributes
-        - tau (float): Stored temperature value.
-        - include_pos_in_den (bool): Whether to include positives in the denom.
-        - exclude_same_class (bool): Whether same-label pairs are excluded from
-          negatives.
-        - use_batch_negs (bool): Whether to use batch negatives.
-        - reduction (str): Reduction to apply to the final loss.
-        """
-        self.tau = float(temperature)                              # InfoNCE 온도 파라미터
-        self.include_pos_in_den = bool(include_positives_in_denominator)  # 외부 양성을 분모에 포함
-        self.exclude_same_class = bool(exclude_same_class_from_negatives)  # 같은 클래스를 음성에서 제외
-        self.use_batch_negs = bool(use_batch_negatives)           # 배치 음성 사용 여부
-        assert reduction in ("mean", "sum")
-        self.reduction = reduction                                 # 손실 축약 방식
-
-    def __call__(self,
-                 features: torch.Tensor,      # [N, D] 앵커 임베딩
-                 labels: torch.Tensor,        # [N] 앵커 라벨
-                 pos_feats,                   # [N, K, D] 또는 List of [k_i, D] 양성 임베딩
-                 pos_labels                   # [N, K] 또는 List of [k_i] 양성 라벨
-                 ) -> torch.Tensor:           # scalar 손실값
+    def forward(self,
+                logits  , # [N, C]
+                features ,      # [N, D] 앵커 임베딩
+                y , 
+                weight ,
+                centers  ,
+                positive_pair  = None ,
+                **kwargs        
+                ):           # scalar 손실값
         
         N, D = features.shape                                      # N: 배치 크기, D: 임베딩 차원
   # [N, D] 정규화된 앵커
-        
-        # 입력 형태 판별: 고정 길이 vs 가변 길이
-        if isinstance(pos_feats, torch.Tensor) and pos_feats.dim() == 3:
-            # 고정 길이 [N, K, D] 케이스
-            return self.compute_fixed(features, pos_feats, labels)
-        elif isinstance(pos_feats, list):
-            # 가변 길이 List of [k_i, D] 케이스
-            return self._compute_variable_length(q, labels, pos_feats, pos_labels)
-        else:
-            raise ValueError("pos_feats must be [N, K, D] tensor or list of [k_i, D] tensors")
 
-    def _compute_fixed_length(self, q, labels, pos_feats, pos_labels):
+        ce_loss = self.ce_loss(logits, y)
+
+        features = gather_tensor(features) if self.args.world_size > 1 else features
+        y = gather_tensor(y) if self.args.world_size > 1 else y
+
+
+        features = torch.cat([features, weight, centers], dim=0) # 문제 지점 
+
+        y = torch.cat([y, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilize_class_centers else 1)], dim=0)
+
+        if positive_pair is None :
+            positive_pair = self.moco.get_k(y,k=self.args.kcl_k)
+        # 입력 형태 판별: 고정 길이 vs 가변 길이
+
+        cl_loss = self.compute_fixed(q=features, k=positive_pair, y=y)
+
+
+        return ce_loss, cl_loss, positive_pair
+
+    @torch.no_grad()
+    def momentum_update(self, model):
+        self.moco.momentum_update(model)
+    
+    @torch.no_grad()
+    def enqueue(self, img, label, ldmk):
+        self.moco.enqueue(img, label, ldmk)
+
+    def _compute_fixed_length(self, q, labels, pos_feats):
         """
         고정 길이 [N, K, D] 양성 처리 (배치 내 같은 클래스 고려)
         
@@ -245,6 +243,9 @@ class KCL:
 
 
     def compute_fixed(self,q,k,y):
+        '''
+        query, key , label 
+        '''
         N,K,D = k.shape 
         k_sims = (q.unsqueeze(1) @ k.transpose(-1,-2)).squeeze(1) / self.tau  # N, k 
 

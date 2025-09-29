@@ -1,58 +1,67 @@
 import torch
 import torch.distributed as dist
+import torch.distributed.nn.functional as dist_nnF
 
 __all__ = ['sync_scalar', 'concat_all_gather', 'sync_defaultdict', 'gather_tensor']
 
+import torch
+import torch.distributed as dist
+import torch.distributed.nn.functional as dist_nnF  # autograd-enabled collectives
 
-class GatherLayer(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, feats, mask):
-        world_size = dist.get_world_size()
-        feats_list = [torch.zeros_like(feats) for _ in range(world_size)]
-        mask_list = [torch.zeros_like(mask) for _ in range(world_size)]
-        dist.all_gather(feats_list, feats)
-        dist.all_gather(mask_list, mask)
-        ctx.world_size = world_size 
-        ctx.save_for_backward(mask)
-        return torch.cat(feats_list, dim=0), torch.cat(mask_list, dim=0)
-    
-    @staticmethod
-    def backward(ctx, grad_feats, grad_mask):
-        (local_mask, ) = ctx.saved_tensors 
-        world = ctx.world_size 
-        rank = dist.get_rank()
-        max_n = local_mask.numel()
-        start = rank * max_n 
-        end = (rank+1) * max_n 
-        g_local = grad_feats[start:end].clone()
-        g_local[~local_mask] = 0.0 
-        return g_local, None 
+def gather_tensor(feats: torch.Tensor) -> torch.Tensor:
+    """
+    feats: (N_local, D) with requires_grad possibly True.
+    Returns: (N_total, D) where gradients from every chunk are routed back to the owning rank.
+    - Uniform local batch: autograd-enabled all_gather then concat.
+    - Uneven local batch: pad to max length, gather feats and mask with autograd, then filter by mask.
+    """
+    # Single-process or not initialized distributed -> passthrough
+    if not dist.is_available() or not dist.is_initialized():
+        return feats.contiguous()
 
-def pad_to_max_local(t, pad_value=0.0):
-    world_size = dist.get_world_size()
-    local_n = torch.tensor([t.shape[0]], device=t.device)
-    sizes = [torch.zeros_like(local_n) for _ in range(world_size)]
-    dist.all_gather(sizes, local_n)
-    sizes = torch.stack(sizes)
+    world = dist.get_world_size()
+    if world == 1:
+        return feats.contiguous()
+
+    # 1) Gather local sizes (small scalars, autograd not needed)
+    n_local = torch.tensor([feats.shape[0]], device=feats.device, dtype=torch.int64)
+    sizes_list = [torch.zeros_like(n_local) for _ in range(world)]
+    dist.all_gather(sizes_list, n_local)
+    sizes = torch.stack(sizes_list, dim=0).squeeze(-1)  # (world,)
+
+    # 2) Uniform case: same local batch size on all ranks
+    if bool(torch.equal(sizes, sizes[0].expand_as(sizes))):
+        with torch.autograd.set_detect_anomaly(True):
+            gathered = dist_nnF.all_gather(feats)  # tuple of (N_local, D), autograd-enabled
+            feats_all = torch.cat(list(gathered), dim=0).contiguous()
+            return feats_all
+
+    # 3) Uneven case: pad + mask + autograd-enabled gather
     max_n = int(sizes.max().item())
-    if t.size(0) < max_n :
-        pad_rows = max_n - t.size(0)
-        pad = torch.full((pad_rows, t.size(1)), pad_value, device=t.device)
-        t = torch.cat([t, pad], dim=0)
-        mask = torch.cat([torch.ones(local_n.item(), device=t.device, dtype=torch.bool),
-                          torch.zeros(pad_rows, device=t.device, dtype=torch.bool)], dim=0)
+    D = feats.size(1)
+    pad_rows = max_n - feats.size(0)
+
+    if pad_rows > 0:
+        pad = torch.zeros((pad_rows, D), device=feats.device, dtype=feats.dtype)
+        feats_padded = torch.cat([feats, pad], dim=0)
+        mask_local = torch.cat([
+            torch.ones(feats.size(0), device=feats.device, dtype=torch.bool),
+            torch.zeros(pad_rows, device=feats.device, dtype=torch.bool)
+        ], dim=0)
     else:
-        mask = torch.ones(max_n, device=t.device, dtype=torch.bool)
-    return t, mask, max_n 
+        feats_padded = feats
+        mask_local = torch.ones(max_n, device=feats.device, dtype=torch.bool)
 
-def autograd_all_gather_uneven(feats, pad_value=0.0):
-    feats_padded, mask, _ = pad_to_max_local(feats, pad_value=pad_value)
-    feats_all, mask_all = GatherLayer.apply(feats_padded, mask)
-    return feats_all, mask_all 
+    # Some backends prefer numeric types for collectives; use uint8 for mask and reconvert
+    gathered_feats = dist_nnF.all_gather(feats_padded)              # tuple of (max_n, D)
+    gathered_mask = dist_nnF.all_gather(mask_local.to(torch.uint8)) # tuple of (max_n,)
 
-def gather_tensor(tensor, pad_value=0.0):
-    X_all, X_mask = autograd_all_gather_uneven(tensor, pad_value=pad_value)
-    return X_all[X_mask]
+    feats_all = torch.cat(list(gathered_feats), dim=0)
+    mask_all = torch.cat(list(gathered_mask), dim=0).bool()
+
+    # Keep only valid rows; selection is autograd-safe and does not require mask gradients
+    feats_all = feats_all[mask_all].contiguous()
+    return feats_all
 
 def sync_defaultdict(dictionary, N,normalize: bool = False):
     for key, value in dictionary.items():

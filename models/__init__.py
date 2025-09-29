@@ -241,6 +241,10 @@ class ImbalancedModel(nn.Module):
         self.decomposition = OrthogonalDecomposer(dim_in) if decomposition=='Cayley' else None
 
         self.img_size=img_size
+
+
+    def init_weight(self, weight):
+        self.weight = nn.Parameter(weight, requires_grad=True)
     
     def load_from_state_dict(self, ckpt_path, clear_weight=True):
         state_dict = torch.load(ckpt_path, map_location=torch.device('cpu'),weights_only=False)['model_state_dict']
