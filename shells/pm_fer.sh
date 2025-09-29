@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J hcir_fer
 #SBATCH -A m1248_g 
-#SBATCH -q regular
+#SBATCH -q debug
 #SBATCH -N 1
-#SBATCH -t 12:00:00
+#SBATCH -t 00:30:00
 #SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -24,8 +24,8 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
-torchrun --nproc_per_node=4 MoCo.py --world_size=4 --num_workers=32 --use_tf=True \
---learning_rate=1e-6 --batch_size=256 --n_epochs=200 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
---dataset_name=AffectNet --dataset_path=../data/AffectNet7 --num_classes=7 --use_sampler=True --img_size=112 --use_view=True \
+torchrun --nproc_per_node=4 FER_CL.py --world_size=4 --num_workers=32 --use_tf=True \
+--learning_rate=1e-6 --batch_size=224 --n_epochs=30 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
+--dataset_name=AffectNet --dataset_path=../data/AffectNet7 --num_classes=7 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m \
---loss=BCL --utilze_target_centers=True --temperature=0.1
+--loss=EKCL_ETF --etf_weight=2 --kcl_k=5 --beta=0.3 --temperature=0.1 --balanced_cl=True  --utilize_target_centers=True
