@@ -1,9 +1,6 @@
 import torch 
 from torch.nn import functional as F
 
-import sys;sys.path.append('../..')
-
-
 
 __all__ = ['EKCL']
 
@@ -79,11 +76,10 @@ class EKCL(torch.nn.Module) :
         ce_loss =torch.nn.functional.cross_entropy(logits, y)
 
         func = torch.autograd.enable_grad if requires_grad else torch.no_grad
+        
         model = model.module if self.args.world_size > 1 else model
-
-
-
-        k_features = self.process_positives(positive_pair, model, aligner) # bs, k, dim 
+        with func() : 
+            k_features = self.process_positives(positive_pair, model, aligner) # bs, k, dim 
 
         k_features = spherical_frechet_mean(k_features)
 

@@ -8,12 +8,22 @@ from .ETF import compute_etf_loss
 from .EKCL import EKCL
 from .BCL import BCL
 import sys 
-from .Moco import Moco
-sys.path.append('../..')
-from dataset import ClassBatchSampler, get_fer_transforms
+import os 
+# Temporarily add project root to import from `dataset`, then remove it
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+_added_tmp_path = False
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+    _added_tmp_path = True
+try:
+    from dataset import ClassBatchSampler, get_fer_transforms
+finally:
+    if _added_tmp_path and _PROJECT_ROOT in sys.path:
+        sys.path.remove(_PROJECT_ROOT)
 
 
-__all__ =  ['Moco', 'KCL', 'compute_etf_loss', 'EKCL', 'BCL', 'get_cl_loss']
+
+__all__ =  ['KCL', 'compute_etf_loss', 'EKCL', 'BCL', 'get_cl_loss']
 
 
 def include(loss, losses):
@@ -31,7 +41,7 @@ def get_cl_loss(args, model=None, init_queue=None):
         return EKCL(args, fetcher =  ClassBatchSampler(args, transform=get_fer_transforms(train=True, model_type=args.model_type),idx=False,num_workers=args.num_workers)
         , temperature=args.temperature)
     elif include(args.loss, ['KBCL']) :
-        return KCL(args, model, temperature=args.temperature, init_queue=init_queue)
+        return KCL(args, model, dim=args.dim, temperature=args.temperature, init_queue=init_queue)
     elif include(args.loss, ['BCL']) :
         return BCL(cls_num_list=None, temperature=args.temperature)
     else:

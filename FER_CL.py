@@ -114,7 +114,7 @@ def get_args():
     args.add_argument('--optimizer', type=str, choices=['AdamW','SAM'], default='SAM')
     args.add_argument('--scheduler', choices=['exp', 'cosine'] , default='exp')
     # dataset info
-    args.add_argument('--dataset_name', type=str, choices=['RAF-DB', 'AffectNet'], required=True)
+    args.add_argument('--dataset_name', type=str, choices=['RAF-DB', 'AffectNet', 'CAER'], required=True)
     args.add_argument('--dataset_path', type=str, required=True)
     args.add_argument('--num_classes', type=int, default=7)
     args.add_argument('--use_sampler', default=False)
@@ -130,6 +130,7 @@ def get_args():
     args.add_argument('--feature_module', default=False, help='deepcomplex_depth, residual_depth')
     args.add_argument('--ckpt_path', type=str, default=None )
     args.add_argument('--clear_classifier', default=False)
+
 
 
     # CL args
@@ -156,6 +157,7 @@ def get_args():
 
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
+    vars(args)['dim'] = dim_dict[args.model_type][-1 if args.feature_branch else 0]
     if args.world_size > 1 :
         dist.init_process_group('nccl',world_size=args.world_size,
                            timeout=timedelta(minutes=60))

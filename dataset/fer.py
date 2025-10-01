@@ -30,21 +30,53 @@ import random
 
 __all__ = ['FER','FER_KFOLD','ClassBatchSampler']
 
+classes = {
+    'Angry' : 0,
+    'Disgust' : 1,
+    'Fear' : 2,
+    'Happy' : 3,
+    'Neutral' : 4,
+    'Sad' : 5,
+    'Surprise' : 6
+}
+
+
 class FER(Dataset):
-    def __init__(self,args,transform,train=True, idx=True, balanced=False):
+    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_type=None, imb_factor:float=1.0, rand_number=566, crop_valid=False):
+        '''
+        AFfectNet : test 
+        CAER : test
+        RAF-DB : valid
+        '''
         super().__init__()
+        global classes
         self.root = args.dataset_path
         self.train = train
-        post = 'train' if train else ('test' if 'Affect' in self.root else ('valid_balanced' if balanced else 'valid' ))
+        post = 'train' if train else ('test' if ('Affect' in self.root or 'CAER' in self.root) else ('valid_balanced' if balanced else 'valid' ))
         offset = 1 if 'RAF' in self.root else 0 
         self.transform=transform
         self.paths = []
         self.labels = []
-        for i in range(7):
-            paths = sorted(glob(f'{self.root}/{post}/{i+offset}/*'))
-            self.paths += paths 
-            self.labels += [i]*len(paths)
+        if args.dataset_name == 'CAER':
+            for key, value in classes.items():
+                paths = sorted(glob(f'{self.root}/{post}/{key}/*'))
+                self.paths += paths
+                self.labels += [value]*len(paths)
+        else:
+            for i in range(int(args.num_classes)):
+                paths = sorted(glob(f'{self.root}/{post}/{i+offset}/*'))
+                self.paths += paths 
+                self.labels += [i]*len(paths)
         self.labels = np.array(self.labels,dtype=np.int64)
+
+        # Apply class imbalance (e.g., CIFAR-LT style) only for training
+        if self.train and imb_type in ('exp', 'step') and imb_factor is not None and float(imb_factor) != 1.0:
+            self._apply_imbalance(imb_type=imb_type, imb_factor=float(imb_factor), rand_number=int(rand_number))
+
+        # Optionally crop validation/test split to minority class size for balanced evaluation
+        if (not self.train) and crop_valid:
+            self._crop_to_min_per_class(seed=int(rand_number))
+
         self.img_num_list = None 
         self.get_img_num_per_cls()
         self.idx = idx 
@@ -60,6 +92,7 @@ class FER(Dataset):
                 img = img.copy()
                 self.preloaded_images.append(img)
 
+    
     def __len__(self):
         return self.labels.shape[0]
 
@@ -87,6 +120,105 @@ class FER(Dataset):
             for key, value in counter.items():
                 self.img_num_list[key] = value
         return np.array(self.img_num_list)
+
+    def _apply_imbalance(self, imb_type: str, imb_factor: float, rand_number: int = 0):
+        """
+        Subsample the current training set to follow a long-tailed distribution.
+
+        - imb_type: 'exp' (exponential) or 'step' (half head, half tail like CIFAR-LT helper)
+        - imb_factor: ratio of tail class to head class (e.g., 0.01)
+        - rand_number: random seed for reproducibility
+        """
+        assert imb_type in ('exp', 'step')
+        if imb_factor <= 0 or imb_factor > 1:
+            # Guardrails; 1.0 means no change, (<0 or >1 not valid)
+            return
+
+        np.random.seed(rand_number)
+
+        labels_np = np.asarray(self.labels, dtype=np.int64)
+        paths_np = np.asarray(self.paths, dtype=object)
+        classes = np.unique(labels_np)
+        cls_num = int(classes.max()) + 1
+
+        # Compute target per-class counts following CIFAR-LT logic
+        # Use the maximum available per-class count as head count baseline
+        per_class_counts = np.array([(labels_np == c).sum() for c in range(cls_num)], dtype=np.int64)
+        if per_class_counts.sum() == 0:
+            return
+        img_max = float(per_class_counts.max())
+
+        img_num_per_cls = []
+        if imb_type == 'exp':
+            for cls_idx in range(cls_num):
+                num = img_max * (imb_factor ** (cls_idx / (cls_num - 1.0)))
+                img_num_per_cls.append(int(num))
+        elif imb_type == 'step':
+            for _ in range(cls_num // 2):
+                img_num_per_cls.append(int(img_max))
+            for _ in range(cls_num - cls_num // 2):
+                img_num_per_cls.append(int(img_max * imb_factor))
+
+        # Optional rotation of class order to avoid always making class 0 the head (mimic CIFAR helper)
+        ordered_classes = np.concatenate([classes[1:], classes[:1]], axis=0)
+
+        new_paths = []
+        new_labels = []
+        for the_class, the_img_num in zip(ordered_classes, img_num_per_cls):
+            idx = np.where(labels_np == the_class)[0]
+            if len(idx) == 0:
+                continue
+            np.random.shuffle(idx)
+            take = min(int(the_img_num), len(idx))
+            sel = idx[:take]
+            new_paths.append(paths_np[sel])
+            new_labels.append(np.full(take, int(the_class), dtype=np.int64))
+
+        if len(new_paths) == 0:
+            return
+
+        self.paths = np.concatenate(new_paths).tolist()
+        self.labels = np.concatenate(new_labels)
+        # Reset helper caches derived from paths
+        self.img_num_list = None
+        # Rebuild path_to_index later in __init__
+
+    def _crop_to_min_per_class(self, seed: int = 0):
+        """
+        For validation/test splits: crop each class to the size of the least frequent class.
+        Selection is randomized with a deterministic seed for reproducibility.
+        """
+        if len(self.labels) == 0:
+            return
+
+        rng = np.random.RandomState(seed)
+        labels_np = np.asarray(self.labels, dtype=np.int64)
+        paths_np = np.asarray(self.paths, dtype=object)
+
+        classes = np.unique(labels_np)
+        # Determine minority class count among present classes
+        per_class_counts = {c: int((labels_np == c).sum()) for c in classes}
+        if len(per_class_counts) == 0:
+            return
+        min_count = int(min(per_class_counts.values()))
+        if min_count <= 0:
+            return
+
+        kept_paths = []
+        kept_labels = []
+        for c in classes:
+            idx = np.where(labels_np == c)[0]
+            if len(idx) <= min_count:
+                chosen = idx
+            else:
+                chosen = rng.choice(idx, size=min_count, replace=False)
+            kept_paths.append(paths_np[chosen])
+            kept_labels.append(np.full(len(chosen), int(c), dtype=np.int64))
+
+        self.paths = np.concatenate(kept_paths).tolist()
+        self.labels = np.concatenate(kept_labels)
+        # Reset caches; indices and counts will be rebuilt downstream in __init__
+        self.img_num_list = None
 
 class FER_KFOLD(FER):
     def __init__(self, args, transform ,n_folds=5, fold_idx=0, train=True, random_seed=42):
