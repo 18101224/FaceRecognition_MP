@@ -6,7 +6,7 @@
 #SBATCH -t 00:30:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=128
+#SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 #SBATCH --mail-user=alswo01287@naver.com
@@ -28,5 +28,4 @@ python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --learning_rate=1e-6 --batch_size=256 --n_epochs=30 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m \
---mean_weight=checkpoint/affectnet8_72K \
---loss=KBCL_ETF --etf_weight=2 --kcl_k=5 --beta=0.3 --temperature=0.1 --balanced_cl=True  --utilize_target_centers=True --moco_k=72 --utilize_class_centers=True
+--loss=CE_ETF --etf_weight=1
