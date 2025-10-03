@@ -31,8 +31,9 @@ def include(loss, losses):
     return False 
 
 def get_model(args):
-    if args.ckpt_path is not None:
-        ckpt_path = os.path.join(args.ckpt_path,'latest.pth')
+    if args.ckpt_path is not None or args.resume_path is not None:
+        path = args.ckpt_path if args.ckpt_path is not None else args.resume_path
+        ckpt_path = os.path.join(path,'latest.pth')
         model_params = torch.load(ckpt_path, weights_only=False, map_location=torch.device('cpu'))['model_params']
         model = ImbalancedModel(**model_params)
         model.load_from_state_dict(ckpt_path, clear_weight=args.clear_classifier)
@@ -85,6 +86,10 @@ def get_loaders(args):
 def get_optimizer(args, model):
     opt = SAM(model.parameters(),base_optimizer=torch.optim.AdamW,lr=args.learning_rate,weight_decay=args.weight_decay)
     scheduler = ExponentialLR(opt,gamma=0.98) if args.scheduler=='exp' else CosineAnnealingLR(opt,T_max=args.n_epochs,eta_min=args.learning_rate/100)
+    if args.resume_path is not None:
+        ckpt = torch.load(os.path.join(args.resume_path, 'latest.pth'), map_location=torch.device('cpu'),weights_only=False)
+        opt.load_state_dict(ckpt['optimizer_state_dict'])
+        scheduler.load_state_dict(ckpt['scheduler_state_dict'])
     return opt, scheduler
 
 def get_queue(args, model, loader, aligner=None):
@@ -123,6 +128,7 @@ def get_args():
 
     # ckpts
     args.add_argument('--mean_weight', type=str, default=None)
+    args.add_argument('--resume_path', type=str, default=None)
     
     # model info 
     args.add_argument('--model_type', type=str, choices=['ir50', 'kprpe12m', 'kprpe4m', 'fmae_small', 'Pyramid_ir50'], required=True)
@@ -183,19 +189,24 @@ class Trainer:
         self.args = args 
         self.model, self.aligner, self.model_params = get_model(args)
         self.train_loader, self.valid_loader, self.train_loader_wo_aug, self.balanced_loader = get_loaders(args)
-        self.init_weight() if not args.loss == 'CE' else None 
+        self.init_weight() if (not args.loss == 'CE' or args.resume_path is not None) else None 
         self.opt, self.scheduler = get_optimizer(args, self.model)
         self.init_logs()
-        self.cl_loss = get_cl_loss(args, deepcopy(self.model if self.args.world_size==1 else self.model.module), init_queue=get_queue(args, self.model, self.train_loader_wo_aug,aligner=self.aligner)) 
+        self.cl_loss = get_cl_loss(args, deepcopy(self.model if self.args.world_size==1 else self.model.module)
+        , init_queue=get_queue(args, self.model, self.train_loader_wo_aug,aligner=self.aligner) if not include(self.args.loss, ['KCL', 'KBCL']) else None) 
     
     def init_logs(self):
+        if self.args.resume_path is not None:
+            ckpt = torch.load(os.path.join(self.args.resume_path, 'latest.pth'), map_location=torch.device('cpu'), weights_only=False)
         if self.args.world_size == 1 or self.args.rank == 0 : 
             id = get_exp_id(self.args)
+            id = ckpt['id'] if self.args.resume_path is not None else id
             wandb.login()
             wandb.init(
                 project=f'CL-{self.args.dataset_name}', 
                 id=id,
                 name=id, 
+                resume='allow', 
                 config={**vars(self.args), **self.model_params}
             )
             self.id = id
@@ -208,8 +219,8 @@ class Trainer:
             self.id = obj_list[0]
         self.log = defaultdict(list)
         self.save_dir = f'checkpoint/{self.id}'
-        self.best_loss = float('inf')
-        self.best_acc = -float('inf')
+        self.best_acc = -float('inf') if not self.args.resume_path is not None else ckpt['best_acc']
+        self.epoch = 0 if not self.args.resume_path is not None else ckpt['epoch'] + 1
     
     @torch.no_grad()
     def init_weight(self):
@@ -262,7 +273,8 @@ class Trainer:
             loss_for_log['CL']+=cl_loss.detach().item()*bs
             loss_for_log['CE']+=ce_loss.detach().item()*bs 
         if include(self.args.loss, ['ETF']) :
-            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight, statistics=self.args.etf_statistics, std_weight=self.args.etf_std)
+            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight,
+             statistics=self.args.etf_statistics, std_weight=self.args.etf_std)
             temp_loss['ETF']=etf_loss
             if loss_for_log is not None:
                 loss_for_log['ETF']+=etf_loss.detach().item()*bs
@@ -365,7 +377,9 @@ class Trainer:
                 'id' : self.id,
                 'mean' : self.mean if include(self.args.loss, ['KCL', 'KBCL']) else None, 
                 'model_params': self.model_params,
-                'args' : self.args
+                'args' : self.args,
+                'moco' : self.cl_loss.moco.key_encoder.state_dict() if include(self.args.loss, ['KCL', 'KBCL']) else None,
+                'moco_queue' : self.cl_loss.moco.queue if include(self.args.loss, ['KCL', 'KBCL']) else None
             }
             torch.save(ckpt, f'{self.save_dir}/latest.pth')
             if valid_acc == self.best_acc : 
@@ -398,7 +412,7 @@ class Trainer:
 
 
     def train(self):
-        for epoch in range(self.args.n_epochs):
+        for epoch in range(self.epoch, self.args.n_epochs):
             self.epoch = epoch 
             if self.args.world_size > 1:
                 self.train_loader.sampler.set_epoch(epoch)

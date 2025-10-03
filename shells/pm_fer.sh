@@ -3,7 +3,7 @@
 #SBATCH -A m1248_g 
 #SBATCH -q shared
 #SBATCH -N 1
-#SBATCH -t 24:00:00
+#SBATCH -t 32:00:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -25,8 +25,8 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
 python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
---learning_rate=1e-6 --batch_size=256 --n_epochs=30 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
+--learning_rate=1e-6 --batch_size=256 --n_epochs=50 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m \
---mean_weight=checkpoint/kbcl_kprpe12m_af8
+--mean_weight=checkpoint/kbcl_kprpe12m_af8 \
 --loss=KBCL --utilize_target_centers=True --moco_k=256 --kcl_k=5 --beta=0.3 --temperature=0.1 
