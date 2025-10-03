@@ -15,7 +15,7 @@ def load_logs(ckpt_paths):
     results = []
     for ckpt_path in ckpt_paths:
         results.append(
-            torch.load(os.path.join(ckpt_path,'bests.pth'),weights_only=False)
+            torch.load(os.path.join(ckpt_path,'best.pth'),weights_only=False)
         )
     return results
 
@@ -62,8 +62,7 @@ def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
             if not train == 'train':
                 result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),balanced=True,idx=False))
         elif 'AffectNet' in dataset_name:
-            raise ValueError(f'Dataset {dataset_name} not supported')
-                
+            result.append(FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=False))
     return result
     
 def load_loaders(datasets):

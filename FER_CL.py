@@ -140,17 +140,21 @@ def get_args():
     args.add_argument('--exclude_same_class_from_negatives', default=False)
     args.add_argument('--use_batch_negatives', default=False)
     args.add_argument('--beta', type=float, default=0.3)
-    args.add_argument('--etf_weight', type=float, default=0.0)
+
     args.add_argument('--temperature', type=float, default=0.1)
 
     args.add_argument('--moco_k', type=int, default=2)
     args.add_argument('--k_meeting', type=str, default=None)
-    args.add_argument('--etf_statistics', default=False)
+
     args.add_argument('--k_grad', default=False)
     args.add_argument('--balanced_cl', default=False)
     args.add_argument('--utilize_class_centers', default=False)
     args.add_argument('--utilize_target_centers', default=False)
     
+    args.add_argument('--etf_weight', type=float, default=0.0)
+    args.add_argument('--etf_statistics', default=False)
+    args.add_argument('--etf_std', type=float, default=0.7)
+
     # logging args 
     args.add_argument('--measure_grad', default=False)
     args.add_argument('--debug', default=False)
@@ -258,7 +262,7 @@ class Trainer:
             loss_for_log['CL']+=cl_loss.detach().item()*bs
             loss_for_log['CE']+=ce_loss.detach().item()*bs 
         if include(self.args.loss, ['ETF']) :
-            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight, statistics=self.args.etf_statistics)
+            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight, statistics=self.args.etf_statistics, std_weight=self.args.etf_std)
             temp_loss['ETF']=etf_loss
             if loss_for_log is not None:
                 loss_for_log['ETF']+=etf_loss.detach().item()*bs

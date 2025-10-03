@@ -2,7 +2,7 @@ import torch
 
 __all__ = ['compute_etf_loss']
 
-def compute_etf_loss(weight, etf_weight, statistics=False):
+def compute_etf_loss(weight, etf_weight, statistics=False, std_weight=0.7):
     '''
     weight : num_classes, dim, normalized weight
     '''
@@ -13,5 +13,5 @@ def compute_etf_loss(weight, etf_weight, statistics=False):
         rho = -1/(sims.shape[0]-1)
         loss = ((sims[i,j].reshape(-1)-rho)**2).mean()
     else:
-        loss = sims[i,j].reshape(-1).mean() + sims[i,j].reshape(-1).std() * 0.7 
+        loss = -sims[i,j].reshape(-1).mean() + sims[i,j].reshape(-1).std() * std_weight
     return loss*etf_weight

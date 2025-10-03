@@ -494,17 +494,11 @@ def plot_angle_matrix(angle_matrices, save_path: str, model_names=None):
     means = [vals.mean() for vals in uppers]
     stds = [vals.std() for vals in uppers]
     # Determine base and range
-    if abs_statistics is not None and len(abs_statistics) == 2:
-        m, s = abs_statistics
-        vmin = m - s
-        vmax = m + s
-    else:
-        # Find matrix with smallest std
-        min_std_idx = int(np.argmin(stds))
-        m = means[min_std_idx]
-        s = stds[min_std_idx]
-        vmin = m - 4 * s
-        vmax = m + 4 * s
+
+    m, s = abs_statistics
+    vmin = m - s
+    vmax = m + s
+
     # Plot
     if n_models == 1:
         fig, ax = plt.subplots(figsize=(8, 6))

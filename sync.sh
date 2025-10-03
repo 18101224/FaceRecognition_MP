@@ -15,6 +15,7 @@ SERVERS=(
 
 SERVERS=(
     "mine1:/home/mj/rl/"
+    "server5:/home/gpuadmin/mj/rl/"
     "server6:/home/gpuadmin/mj/rl/"
     "server7:/home/gpuadmin/mj/rl/"
 )
