@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J hcir_fer
 #SBATCH -A m1248_g 
-#SBATCH -q shared
+#SBATCH -q debug
 #SBATCH -N 1
-#SBATCH -t 32:00:00
+#SBATCH -t 00:30:00
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -29,4 +29,4 @@ python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m \
 --mean_weight=checkpoint/kbcl_kprpe12m_af8 \
---loss=KBCL --utilize_target_centers=True --moco_k=256 --kcl_k=5 --beta=0.3 --temperature=0.1 
+--loss=EKCL --k_grad=True --balanced_cl=True --utilize_target_centers=True --moco_k=256 --kcl_k=5 --beta=0.3 --temperature=0.1 
