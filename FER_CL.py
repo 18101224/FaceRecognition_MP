@@ -428,6 +428,8 @@ class Trainer:
                 final_img = os.path.join(self.save_dir, 'angle_mat', f"{str(self.epoch).zfill(4)}.png")
                 if os.path.exists(final_img):
                     wandb.log({'final/angle_matrix': wandb.Image(final_img), 'final_epoch': self.epoch})
+                    # Save 5-second GIF of angle matrix evolution
+                    self.save_angle_gif(duration_s=5.0)
                     angle_dir = os.path.join(self.save_dir, 'angle_mat')
                     if os.path.isdir(angle_dir):
                         shutil.make_archive(os.path.join(self.save_dir, 'angle_mat'), 'zip', root_dir=self.save_dir, base_dir='angle_mat')
@@ -444,6 +446,31 @@ class Trainer:
         kernel = self.model.get_kernel() if self.args.world_size == 1 else self.model.module.get_kernel()
         angle_mat = (torch.arccos((kernel.T@kernel).clamp(-1.0,1.0)) * 180.0 / torch.pi).detach().cpu().numpy()
         plot_angle_matrix(angle_mat, os.path.join(save_dir, f"{str(epoch).zfill(4)}.png"))
+
+    @torch.inference_mode()
+    def save_angle_gif(self, duration_s: float = 5.0):
+        if not (self.args.world_size == 1 or self.args.rank == 0):
+            return
+        angle_dir = os.path.join(self.save_dir, 'angle_mat')
+        if not os.path.isdir(angle_dir):
+            return
+        # Collect frames
+        image_files = sorted([
+            os.path.join(angle_dir, f)
+            for f in os.listdir(angle_dir)
+            if f.lower().endswith((".png", ".jpg", ".jpeg"))
+        ])
+        if len(image_files) == 0:
+            return
+        try:
+            import imageio
+            images = [imageio.imread(fp) for fp in image_files]
+            per_frame = duration_s / max(1, len(images))
+            durations = [per_frame] * len(images)
+            gif_path = os.path.join(self.save_dir, 'angle_mat.gif')
+            imageio.mimsave(gif_path, images, duration=durations)
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

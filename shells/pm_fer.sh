@@ -4,9 +4,9 @@
 #SBATCH -q debug
 #SBATCH -N 1
 #SBATCH -t 00:30:00
-#SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=128
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 #SBATCH --mail-user=alswo01287@naver.com
@@ -24,7 +24,7 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
-python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
+torchrun --nproc_per_node=4 FER_CL.py --world_size=4 --num_workers=128 --use_tf=True \
 --learning_rate=1e-6 --batch_size=256 --n_epochs=50 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m \
