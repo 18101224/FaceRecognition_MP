@@ -270,6 +270,7 @@ def compute_class_spherical_means(
         # Accumulate per class
         for c in labels.unique().tolist():
             mask = (labels == c)
+            print(features.shape, mask.shape)
             feats_c = features[mask]
             if feats_c.numel() == 0:
                 continue
