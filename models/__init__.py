@@ -320,7 +320,7 @@ class ImbalancedModel(nn.Module):
 
         # if CL training 
         if features : 
-            centers, processed_feat = self.process_feature_branch(z_, weight) if self.feature_branch else (weight.T, z_)
+            processed_feat, centers = self.process_feature_branch(z_, weight) if self.feature_branch else (z_, weight.T)
             return logit, processed_feat , centers
         else:
             return logit 

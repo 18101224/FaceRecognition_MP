@@ -42,7 +42,7 @@ classes = {
 
 
 class FER(Dataset):
-    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_type=None, imb_factor:float=1.0, rand_number=566, crop_valid=False):
+    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_type='exp', imb_factor:float=1.0, rand_number=566, crop_valid=False):
         '''
         AFfectNet : test 
         CAER : test
@@ -92,6 +92,9 @@ class FER(Dataset):
                 img = img.copy()
                 self.preloaded_images.append(img)
 
+
+
+        print(f'Train:{self.train} \n {self.get_img_num_per_cls()}')
     
     def __len__(self):
         return self.labels.shape[0]

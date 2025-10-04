@@ -13,19 +13,21 @@ feature_names = ['backbone_feat', 'cls_feat', 'bcl_feat', 'center_feat']
 class Analysis:
     def __init__(self,args):
         self.args = args
-        
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        log = load_logs(self.args.model_paths)[0]
-        self.args = concat_args(self.args, [log])[0]
-
-        #load dataset 
         self.datasets = load_dataset(self.args,dataset_path=self.args.dataset_path, dataset_name=self.args.dataset_name, imb_factor=self.args.imb_factor)
         self.loaders = load_loaders(self.datasets)
         self.save_path = self.args.save_path
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path,exist_ok=True)
+
         if self.args.mode == 'dataset':
             return 
+        log = load_logs(self.args.model_paths)[0]
+        self.args = concat_args(self.args, [log])[0]
+
+        #load dataset 
+
+
         #load model
 
         self.model = load_models(self.args.model_paths, [self.args])[0]
@@ -162,7 +164,25 @@ class Compare:
 
         angle_matrices = [compute_angle_matrix(model) for model in self.models]
         compare_angle_rates(angle_matrices, self.model_names, self.save_path)
-    
+
+        # Compare confusion matrices across models
+        normed_cms = []
+        normed_cms_balanced = [] if len(self.loaders) == 3 else None
+        for idx, model in enumerate(self.models):
+            v_preds, v_labels, _ = get_predictions(model, self.loaders[1], self.aligner)
+            v_cm = compute_confusion_matrix(v_preds, v_labels)
+            v_cm_norm = normalize_confusion_matrix(v_cm, v_labels)
+            normed_cms.append(v_cm_norm)
+            if len(self.loaders) == 3:
+                vb_preds, vb_labels, _ = get_predictions(model, self.loaders[2], self.aligner)
+                vb_cm = compute_confusion_matrix(vb_preds, vb_labels)
+                vb_cm_norm = normalize_confusion_matrix(vb_cm, vb_labels)
+                normed_cms_balanced.append(vb_cm_norm)
+
+        compare_confusion_matrices(normed_cms, self.model_names, self.save_path, save_name='compare_confusion_matrices.png')
+        if len(self.loaders) == 3:
+            compare_confusion_matrices(normed_cms_balanced, self.model_names, self.save_path, save_name='compare_confusion_matrices_balanced.png')
+        
 
 class Analyze_backbone:
     def __init__(self, args):

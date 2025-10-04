@@ -84,6 +84,36 @@ def plot_confusion_matrix(cm: np.ndarray, normed_cm: np.ndarray, save_path: str,
             plt.savefig(os.path.join(save_path, 'confusion_matrices.png'))
         plt.close() 
 
+def compare_confusion_matrices(normed_cms: list, model_names: list, save_path: str, save_name: str = 'compare_confusion_matrices.png'):
+    """
+    Plot normalized confusion matrices for multiple models side by side for comparison.
+    Args:
+        normed_cms (list[np.ndarray]): List of normalized confusion matrices (one per model), each shape (n_c, n_c).
+        model_names (list[str]): Names for each model, used as subplot titles.
+        save_path (str): Directory to save the figure.
+        save_name (str): Filename to save under.
+    """
+    if not isinstance(normed_cms, list) or len(normed_cms) == 0:
+        return
+    n_models = len(normed_cms)
+    n_c = normed_cms[0].shape[0]
+    annot = True if n_c <= 20 else False
+    fmt = '.2f'
+    fig_width = max(6, 6 * n_models)
+    fig, axes = plt.subplots(1, n_models, figsize=(fig_width, 6))
+    axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
+    for idx, (cm, ax) in enumerate(zip(normed_cms, axes)):
+        sns.heatmap(cm, annot=annot, fmt=fmt, cmap='Blues', vmin=0.0, vmax=1.0, ax=ax)
+        title = 'Normalized Confusion Matrix'
+        if model_names is not None and idx < len(model_names):
+            title += f' ({model_names[idx]})'
+        ax.set_title(title)
+        ax.set_xlabel('Predicted Label')
+        ax.set_ylabel('True Label')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_path, save_name))
+    plt.close()
+
 def plot_angle_with_confusion_matrix(angle: np.ndarray, conf: np.ndarray, save_path: str, save_name=None,
                                      top_reserved: float = 0.14):
     """

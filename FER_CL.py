@@ -60,9 +60,10 @@ def get_model(args):
 
 def get_loaders(args):
     train_transform, valid_transform, train_transform_wo_aug = get_multi_view_transforms(args, train=True,model_type=args.model_type), get_multi_view_transforms(args, train=False,model_type=args.model_type), get_multi_view_transforms(args, train=False,model_type=args.model_type)
-    train_dataset, valid_dataset, train_dataset_wo_aug = FER(args=args, train=True, transform=train_transform, idx=False), FER(args=args, train=False, transform=valid_transform, idx=False), FER(args=args, train=False, transform=train_transform_wo_aug, idx=False, balanced=False)
-    balanced_dataset = FER(args,transform=valid_transform, train=False, idx=False, balanced=True) if args.dataset_name == 'RAF-DB' else None
-    if args.world_size > 1 :
+    train_dataset, valid_dataset, train_dataset_wo_aug = FER(args=args, train=True, transform=train_transform, idx=False, imb_factor=args.imb_factor), FER(args=args, train=False, transform=valid_transform, idx=False), FER(args=args, train=False, transform=train_transform_wo_aug, idx=False, balanced=False,imb_factor=args.imb_factor)
+    balanced_dataset = FER(args,transform=valid_transform, train=False, idx=False, balanced=True, imb_factor=args.imb_factor) if args.dataset_name == 'RAF-DB' else None
+    
+    if args.world_size > 1 : 
         if args.use_sampler :
             train_sampler = DistributedSamplerWrapper(ImbalancedDatasetSampler(train_dataset, labels=train_dataset.labels), shuffle=True)
         else:
@@ -126,7 +127,7 @@ def get_args():
     args.add_argument('--use_sampler', default=False)
     args.add_argument('--img_size', type=int, choices=[112,224], default=112)
     args.add_argument('--use_view', default=False)
-
+    args.add_argument('--imb_factor', type=float, default=1.0)
     # ckpts
     args.add_argument('--mean_weight', type=str, default=None)
     args.add_argument('--resume_path', type=str, default=None)
@@ -257,11 +258,11 @@ class Trainer:
         else:
             now_mean = None
 
-        weight = (self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T) if self.args.utilize_target_centers else None
+        weight = c if self.args.utilize_target_centers else None
 
 
         ce_loss, cl_loss, k = self.cl_loss(logits=logit, features=q, y=label, weight=weight, centers=now_mean,
-        model=self.model ,aligner=self.aligner, positive_pair=k, requires_grad=self.args.k_grad)
+        model=self.model if self.args.world_size==1 else self.model.module ,aligner=self.aligner, positive_pair=k, requires_grad=self.args.k_grad)
 
         return ce_loss, cl_loss*self.args.beta, k
 

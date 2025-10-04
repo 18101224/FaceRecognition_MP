@@ -1,13 +1,5 @@
-
-
-for LR in 0.000003 0.000006; do
-CUDA_VISIBLE_DEVICES=1,2 torchrun --nproc_per_node=2 --rdzv_backend=c10d --rdzv_endpoint=localhost:23501 OOS_target_train.py --world_size=2 \
-        --n_folds=3 --g_net_ckpt=checkpoints/7080801341664 --random_seed=566 --kprpe_ckpt_path=checkpoint/adaface_vit_base_kprpe_webface12m \
-        --cos_constant_margin=0.5 --instance_ada_loss=True \
-        --learning_rate=$LR --batch_size=256 --n_epochs=30 \
-        --dataset_path=../data/AffectNet7 --dataset_name=AffectNet \
-        --wandb_token=../wandb.txt --server=pm \
-        --confidence_constant=1 --use_tf=True --cos_scaling=16  \
-        --oos_tensor=checkpoint/Affect.pt 
-done
-wait
+CUDA_VISIBLE_DEVICES=1,2 torchrun --nproc_per_node=2 FER_CL.py --world_size=2 --num_workers=32 --use_tf=True \
+--learning_rate=1e-6 --batch_size=32 --n_epochs=30 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
+--dataset_name=AffectNet --dataset_path=../data/AffectNet7 --num_classes=7 --use_sampler=True --img_size=112 \
+--model_type=ir50 \
+--loss=EKCL_ETF --kcl_k=5 --beta=0.3 --temperature=0.1 --k_meeting=2_3 --balanced_cl=True --etf_weight=1 

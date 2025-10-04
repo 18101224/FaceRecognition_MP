@@ -25,8 +25,7 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
 torchrun --nproc_per_node=4 FER_CL.py --world_size=4 --num_workers=128 --use_tf=True \
---learning_rate=1e-6 --batch_size=224 --n_epochs=50 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
---dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
---model_type=kprpe12m \
---mean_weight=checkpoint/kbcl_kprpe12m_af8 \
---loss=EKCL --k_grad=True --balanced_cl=True --utilize_target_centers=True --kcl_k=5 --beta=0.3 --temperature=0.1 
+--learning_rate=1e-6 --batch_size=256 --n_epochs=30 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
+--dataset_name=AffectNet --dataset_path=../data/AffectNet7 --num_classes=7 --use_sampler=True --img_size=112 \
+--model_type=ir50 \
+--loss=EKCL_ETF --kcl_k=5 --beta=0.3 --temperature=0.1 --k_meeting=2_3 --balanced_cl=True --etf_weight=1 

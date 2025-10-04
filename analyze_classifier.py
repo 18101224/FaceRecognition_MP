@@ -13,7 +13,7 @@ def get_args():
     args.add_argument('--imb_factor', type=float, required=False, default=1, help='Image factor')
     args.add_argument('--mode',choices=['analysis','compare','backbone','dataset'],default='analysis')
     args.add_argument('--ckpt_type', type=str, required=False, choices=['best_acc','latest','best_macro_acc','best_acc_balanced','best'])
-
+    args.add_argument('--model_type', type=str, required=False, choices=['ir50', 'kprpe12m', 'kprpe4m', 'fmae_small', 'Pyramid_ir50'], default='ir50')
     return args.parse_args()
 
 if __name__ == '__main__':

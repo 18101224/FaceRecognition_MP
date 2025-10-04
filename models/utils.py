@@ -233,6 +233,7 @@ def compute_class_spherical_means(
         # Normalize to lie on the unit sphere
         features = normalize(features, dim=-1)
 
+
         # If running under DDP, gather features and labels across ranks
         if dist.is_available() and dist.is_initialized():
             world_size = dist.get_world_size()
@@ -270,7 +271,6 @@ def compute_class_spherical_means(
         # Accumulate per class
         for c in labels.unique().tolist():
             mask = (labels == c)
-            print(features.shape, mask.shape)
             feats_c = features[mask]
             if feats_c.numel() == 0:
                 continue

@@ -63,6 +63,8 @@ def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
                 result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),balanced=True,idx=False))
         elif 'AffectNet' in dataset_name:
             result.append(FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=False))
+        elif 'CAER' in dataset_name:
+            result.append(FER(args=args, train=(train=='train'), transform=get_fer_transforms(train=False,model_type=args.model_type),idx=False, imb_factor=args.imb_factor ))
     return result
     
 def load_loaders(datasets):
