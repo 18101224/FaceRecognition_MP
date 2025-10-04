@@ -542,7 +542,7 @@ def plot_angle_matrix(angle_matrices, save_path: str, model_names=None):
                  bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.6', alpha=0.9))
     else:
         fig.tight_layout()
-    if 'png' in save_path:
+    if 'png' or 'jpeg' in save_path:
         fig.savefig(save_path)
     else:
         fig.savefig(os.path.join(save_path, 'angle_matrix.png'))

@@ -199,7 +199,7 @@ class ImbalancedModel(nn.Module):
     def __init__(self, num_classes, model_type: str, feature_branch=False, feature_module=False,  
     regular_simplex=False, cos=True
     , learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False,
-    decomposition=False, img_size=112):
+    decomposition=False, img_size=112, use_bn = False):
         global model_dict, dim_dict
         if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
@@ -216,6 +216,7 @@ class ImbalancedModel(nn.Module):
         if feature_branch : 
             self.head = nn.Sequential(nn.Linear(dim_in, mid_dim), nn.BatchNorm1d(mid_dim), nn.ReLU(inplace=True), nn.Linear(mid_dim, feat_dim))
             self.head_fc = nn.Sequential(nn.Linear(dim_in, mid_dim), nn.BatchNorm1d(mid_dim), nn.ReLU(inplace=True), nn.Linear(mid_dim, feat_dim))
+            self.bn = nn.BatchNorm1d(feat_dim) if use_bn else None
 
 
         self.feature_branch = feature_branch
@@ -262,7 +263,15 @@ class ImbalancedModel(nn.Module):
             return torch.nn.functional.normalize(self.weight, dim=0, p=2) # dim, num_classes
         else:
             return self.weight
-        
+
+    def process_feature_branch(self,z, weight):
+        w = self.head_fc(weight.T)
+        z = self.head(z)
+        if self.bn is not None:
+            z = self.bn(z)
+            w = self.bn(w)
+        return nn.functional.normalize(z, dim=-1), nn.functional.normalize(w, dim=-1)
+
     def forward(self, x, features=False, keypoint=None ):
         '''
         returns : backbone_feature, rotated_feature, logit
@@ -311,12 +320,12 @@ class ImbalancedModel(nn.Module):
 
         # if CL training 
         if features : 
-            centers = nn.functional.normalize(self.head_fc(weight.T), dim=-1) if self.feature_branch else weight.T
-            processed_feat = nn.functional.normalize(self.head(z_), dim=-1) if self.feature_branch else z_
+            centers, processed_feat = self.process_feature_branch(z_, weight) if self.feature_branch else (weight.T, z_)
             return logit, processed_feat , centers
         else:
             return logit 
     
+
     def analysis(self, x):
         '''
         returns : backbone_feat, cls_feat, bcl_feat, center_feat

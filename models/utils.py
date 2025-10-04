@@ -1,6 +1,8 @@
 import torch
 from torch import distributed as dist
 from tqdm import tqdm
+
+
 __all__ = ['slerp', 'compute_class_spherical_means', 'calc_class_mean']
 
 # ---------- 기본 유틸 ----------
@@ -198,7 +200,7 @@ def compute_class_spherical_means(
         try:
             outputs = model(images, features=True, keypoint=ldmk)
             if isinstance(outputs, (list, tuple)):
-                features = outputs[1]
+                features = outputs[1] # processed feature, that is from feature branch. 
             else:
                 features = outputs
         except TypeError:

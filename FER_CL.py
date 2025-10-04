@@ -50,7 +50,8 @@ def get_model(args):
             'freeze_backbone': False, 
             'remain_backbone': False, 
             'decomposition': False,
-            'img_size': args.img_size
+            'img_size': args.img_size,
+            'use_bn': args.use_bn
         }
         model = ImbalancedModel(**model_params)
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if 'kprpe' in args.model_type else None
@@ -136,7 +137,8 @@ def get_args():
     args.add_argument('--feature_module', default=False, help='deepcomplex_depth, residual_depth')
     args.add_argument('--ckpt_path', type=str, default=None )
     args.add_argument('--clear_classifier', default=False)
-
+    args.add_argument('--init_classifier', default=False)
+    args.add_argument('--use_bn', default=False)
 
 
     # CL args
@@ -228,10 +230,11 @@ class Trainer:
              self.model.module, device=torch.device('cuda'), num_classes=self.args.num_classes, aligner=self.aligner)
         dist.all_reduce(mean, op=dist.ReduceOp.AVG) if self.args.world_size > 1 else None
         mean = torch.nn.functional.normalize(mean, dim=1)
-        if self.args.world_size == 1:
-            self.model.init_weight(mean.T)
-        else:
-            self.model.module.init_weight(mean.T)
+        if self.args.init_classifier : 
+            if self.args.world_size == 1:
+                self.model.init_weight(mean.T)
+            else:
+                self.model.module.init_weight(mean.T)
         self.mean = mean 
 
     def process_loss(self, loss):
@@ -445,7 +448,7 @@ class Trainer:
         os.makedirs(save_dir, exist_ok=True)
         kernel = self.model.get_kernel() if self.args.world_size == 1 else self.model.module.get_kernel()
         angle_mat = (torch.arccos((kernel.T@kernel).clamp(-1.0,1.0)) * 180.0 / torch.pi).detach().cpu().numpy()
-        plot_angle_matrix(angle_mat, os.path.join(save_dir, f"{str(epoch).zfill(4)}.png"))
+        plot_angle_matrix(angle_mat, os.path.join(save_dir, f"{str(epoch).zfill(4)}.jpeg"))
 
     @torch.inference_mode()
     def save_angle_gif(self, duration_s: float = 5.0):
