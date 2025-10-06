@@ -1,4 +1,4 @@
-for lr in (1.5e-6 2e-6 3e-6 0.8e-6); do
+for lr in 1.5e-6 2e-6 3e-6 8e-7; do
 CUDA_VISIBLE_DEVICES=0 python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --learning_rate=$lr --batch_size=64 --n_epochs=30 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \

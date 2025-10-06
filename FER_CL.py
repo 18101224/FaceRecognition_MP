@@ -120,6 +120,8 @@ def get_args():
     args.add_argument('--weight_decay', type=float, required=True)
     args.add_argument('--optimizer', type=str, choices=['AdamW','SAM'], default='SAM')
     args.add_argument('--scheduler', choices=['exp', 'cosine'] , default='exp')
+
+    
     # dataset info
     args.add_argument('--dataset_name', type=str, choices=['RAF-DB', 'AffectNet', 'CAER'], required=True)
     args.add_argument('--dataset_path', type=str, required=True)
@@ -148,6 +150,8 @@ def get_args():
     args.add_argument('--include_positives_in_denominator', default=False)
     args.add_argument('--exclude_same_class_from_negatives', default=False)
     args.add_argument('--use_batch_negatives', default=False)
+    args.add_argument('--except_sam', default=False)
+
     args.add_argument('--beta', type=float, default=0.3)
 
     args.add_argument('--temperature', type=float, default=0.1)
@@ -246,6 +250,7 @@ class Trainer:
         return total_loss
 
     def get_cl_loss(self, logit, q, label ,c , ldmk=None, k=None):
+
         if self.args.utilize_class_centers:
             q_for_mu = gather_tensor(q) if self.args.world_size > 1 else q
             label_for_mu = gather_tensor(label) if self.args.world_size > 1 else label
@@ -266,17 +271,17 @@ class Trainer:
 
         return ce_loss, cl_loss*self.args.beta, k
 
-    def run_train_forward(self, img, label, ldmk=None, k=None, loss_for_log=None):
+    def run_train_forward(self, img, label, ldmk=None, k=None, loss_for_log=None, ce_only=False):
         logit, q, c = self.model(img, keypoint=ldmk, features=True)
         temp_loss = defaultdict(float)
         bs= q.shape[0]
-        ce_loss, cl_loss, k = self.get_cl_loss(logit, q, label, c, ldmk, k=k)
+        ce_loss, cl_loss, k = self.get_cl_loss(logit, q, label, c, ldmk, k=k) if not ce_only else (torch.nn.functional.cross_entropy(logit, label), None, None)
         temp_loss['CE']=ce_loss
         temp_loss['CL']=cl_loss
         if loss_for_log is not None:
-            loss_for_log['CL']+=cl_loss.detach().item()*bs
+            loss_for_log['CL']+= cl_loss.detach().item()*bs if cl_loss is not None else 0
             loss_for_log['CE']+=ce_loss.detach().item()*bs 
-        if include(self.args.loss, ['ETF']) :
+        if include(self.args.loss, ['ETF']) and not ce_only :
             etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight,
              statistics=self.args.etf_statistics, std_weight=self.args.etf_std)
             temp_loss['ETF']=etf_loss
@@ -302,7 +307,7 @@ class Trainer:
                 img = torch.concat(img, dim=0)
             img, label = img.cuda(), label.cuda() # the images are list with number-of-views 
             ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
-            logit, loss, k = self.run_train_forward(img, label, ldmk, k=None, loss_for_log=loss_for_log)
+            logit, loss, k = self.run_train_forward(img, label, ldmk, k=None, loss_for_log=loss_for_log, ce_only=self.args.except_sam)
             loss.backward()
             if self.args.measure_grad : 
                 temp_grad = measure_grad(self.model, 0, 0, temp_grad, layer_names=['backbone'])
