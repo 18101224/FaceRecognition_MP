@@ -27,6 +27,5 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --learning_rate=1.5e-6 --batch_size=256 --n_epochs=30 --weight_decay=5e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
---model_type=kprpe12m --feature_branch=True --use_bn=True \
---mean_weight=checkpoint/af8_kprpe12m_fb \
---loss=KBCL --kcl_k=5 --beta=0.3 --temperature=0.1 --moco_k=256 --balanced_cl=True 
+--model_type=kprpe12m \
+--loss=CE
