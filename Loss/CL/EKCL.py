@@ -78,6 +78,7 @@ class EKCL(torch.nn.Module) :
 
         bs = k.shape[0]
 
+
         counts = y.bincount().to(q.device) # (C)
 
         k_sims = q@k.T/self.tau # (bs+C+C, bs) 
@@ -87,12 +88,14 @@ class EKCL(torch.nn.Module) :
 
         negative_mask = ~positive_mask # (bs+C+C, bs)
         # k_sims -> bs, bs+C+C, counts[y].reshape(1,-1) -> (1, bs+C+C), 
-        norm = counts[y].reshape(1,-1) if self.args.balanced_cl else 1 
+        norm = counts[y[:bs]].reshape(1,-1) if self.args.balanced_cl else 1 
 
-        den = torch.log(torch.sum(torch.exp(k_sims.masked_fill(positive_mask, float('-inf')))/ norm, dim=-1) ) # bs only negatives
+        den = k_sims.masked_fill(positive_mask, float('-inf')) 
+        den = torch.log(torch.sum(torch.exp(den)/ norm, dim=-1) ) # bs only negatives
+        #den = torch.log(torch.sum(torch.exp(k_sims.masked_fill(positive_mask, float('-inf')))/ norm, dim=-1) ) # bs only negatives
         num = torch.logsumexp(k_sims.masked_fill(negative_mask,float('-inf')),dim=1) # bs ]
         
-        norm = counts[y[:bs]].reshape(bs) if self.args.balanced_cl else 1 
+        norm = counts[y].reshape(-1) if self.args.balanced_cl else 1 
         loss = -(num-den) / norm 
 
         return loss.mean()
@@ -111,10 +114,9 @@ class EKCL(torch.nn.Module) :
             key = positive_pair[:,self.qk-1:,:,:,:]
             if key.ndim ==4 :
                 key = key.unsqueeze(1)
-            features, k_features = self.process_k_meeting(features=features, y=y, weight=weight, query=query, key=key, centers=centers, model=model, aligner=aligner, requires_grad=requires_grad)
+            features, k_features, query_dist, key_dist = self.process_k_meeting(features=features, y=y, weight=weight, query=query, key=key, centers=centers, model=model, aligner=aligner, requires_grad=requires_grad)
         else:
             func = torch.autograd.enable_grad if requires_grad else torch.no_grad
-            model = model.module if self.args.world_size > 1 else model
             with func() : 
                 k_features = self.process_positives(positive_pair, model, aligner) # bs, k, dim 
             k_features = spherical_frechet_mean(k_features)
@@ -133,7 +135,8 @@ class EKCL(torch.nn.Module) :
                 k_features = torch.concat(to_concat, dim=0)
 
         cl_loss = self.compute_sims(features, k_features, y) if self.args.k_meeting is None else self.compute_sims_k_meeting(features, k_features, y)
-
+        if self.args.k_meeting is not None and self.args.k_meeting_dist : 
+            cl_loss += self.args.k_meeting_dist*(query_dist+key_dist)
         return ce_loss, cl_loss,  positive_pair
 
     def process_k_meeting(self, features, y, weight, query, key, centers, model, aligner=None, requires_grad=False):
@@ -141,10 +144,21 @@ class EKCL(torch.nn.Module) :
         func = torch.autograd.enable_grad if requires_grad else torch.no_grad 
         with func() : 
             key_features = self.process_positives(key, model, aligner) # bs, kk, dim 
-        query_features = spherical_frechet_mean(torch.cat([features.unsqueeze(1),query_features], dim=1))
-        key_features = spherical_frechet_mean(key_features)
-        return query_features, key_features
+            key_means = spherical_frechet_mean(key_features)
+            key_dist = calc_cluster_distance(key_features, key_means) * int(bool(requires_grad))
+        query_means = spherical_frechet_mean(torch.cat([features.unsqueeze(1),query_features], dim=1))
+        query_dist = calc_cluster_distance(query_features, query_means)
+        return query_means, key_means, query_dist, key_dist
 
+
+def calc_cluster_distance(features, means):
+    '''
+    features : bs, k, dim 
+    means : bs, dim
+    '''
+    sims = (features @ means.unsqueeze(1).transpose(-1,-2)).squeeze(-1) # bs, k
+    sims = torch.clamp(sims, min=-1+1e-7, max=1-1e-7)
+    return torch.sum(torch.arccos(sims)**2, dim=-1, keepdim=True).reshape(-1).mean()
 
 def spherical_frechet_mean(X, max_iters=20, tol=1e-6, step=1.0, eps=1e-7):
     """

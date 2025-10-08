@@ -95,13 +95,9 @@ def get_optimizer(args, model):
     return opt, scheduler
 
 def get_queue(args, model, loader, aligner=None):
-    if args.mean_weight is not None and not os.path.exists(os.path.join(args.mean_weight, 'init_queue.pth')):
-        m = model if args.world_size == 1 else model.module 
-        mean = compute_class_spherical_means(loader, m, aligner,device=torch.device('cuda'), num_classes=args.num_classes, subset=args.moco_k)
-    elif args.mean_weight is not None and os.path.exists(os.path.join(args.mean_weight, 'init_queue.pth')):
-        mean = torch.load(os.path.join(args.mean_weight, 'init_queue.pth'), weights_only=False, map_location=torch.device('cuda'))
-    init_queue = None if args.mean_weight is None else mean
-    return init_queue
+    m = model if args.world_size == 1 else model.module 
+    mean = compute_class_spherical_means(loader, m, aligner,device=torch.device('cuda'), num_classes=args.num_classes, subset=args.moco_k)
+    return mean
 
 def get_args():
     args = ArgumentParser()
@@ -130,8 +126,10 @@ def get_args():
     args.add_argument('--img_size', type=int, choices=[112,224], default=112)
     args.add_argument('--use_view', default=False)
     args.add_argument('--imb_factor', type=float, default=1.0)
+
+
     # ckpts
-    args.add_argument('--mean_weight', type=str, default=None)
+
     args.add_argument('--resume_path', type=str, default=None)
     
     # model info 
@@ -151,6 +149,7 @@ def get_args():
     args.add_argument('--exclude_same_class_from_negatives', default=False)
     args.add_argument('--use_batch_negatives', default=False)
     args.add_argument('--except_sam', default=False)
+    args.add_argument('--k_meeting_dist', default=False, type=float)
 
     args.add_argument('--beta', type=float, default=0.3)
 
@@ -171,6 +170,7 @@ def get_args():
     # logging args 
     args.add_argument('--measure_grad', default=False)
     args.add_argument('--debug', default=False)
+
 
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
