@@ -43,6 +43,8 @@ class Analysis:
         train_preds, train_labels, train_confs = get_predictions(self.model, self.loaders[0], self.aligner)
         valid_preds, valid_labels, valid_confs = get_predictions(self.model, self.loaders[1], self.aligner)
         valid_preds_balanced, valid_labels_balanced, valid_confs_balanced = get_predictions(self.model, self.loaders[2], self.aligner) if len(self.loaders) == 3 else (None, None, None)
+        valid_macro_accuracy = get_macro_accuracy(valid_preds, valid_labels)
+
         #compute confusion matrix
         valid_cm = compute_confusion_matrix(valid_preds, valid_labels)
         valid_normed_cm = normalize_confusion_matrix(valid_cm, valid_labels)
@@ -68,6 +70,7 @@ class Analysis:
         total_predictions = len(valid_labels)
         validation_accuracy = correct_predictions / total_predictions
         print(f"Validation Accuracy: {validation_accuracy * 100:.2f}%")
+        print(f"Validation Macro Accuracy: {valid_macro_accuracy * 100:.2f}%")
 
     def analyze_features(self):
         backbone = self.model.backbone
@@ -135,7 +138,7 @@ class Compare:
         valid_preds, valid_labels, valid_confs = [], [], []
         if len(self.loaders) == 3 :
             valid_preds_balanced, valid_labels_balanced, valid_confs_balanced = [], [], []
-        for model in self.models :
+        for idx, model in enumerate(self.models) :
             preds, labels, confs = get_predictions(model, self.loaders[0], self.aligner)
             v_preds, v_labels, v_confs = get_predictions(model, self.loaders[1], self.aligner)
             if len(self.loaders) == 3 :
@@ -149,6 +152,8 @@ class Compare:
             valid_preds.append(v_preds)
             valid_labels.append(v_labels)
             valid_confs.append(v_confs)
+            print(f'{self.args[0].model_names[idx]} Validation Macro Accuracy: {get_macro_accuracy(v_preds, v_labels) * 100:.2f}%')
+
                 
         valid_accuracies = []
         valid_accuracies_balanced = []

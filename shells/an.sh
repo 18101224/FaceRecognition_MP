@@ -1,2 +1,4 @@
-python3 analyze_classifier.py --dataset_name=CAER --dataset_path=../data/CAER-S --aligner_path=checkpoint/adaface_vit_base_kprpe_webface12m \
---save_path=results/caer_dataset --mode=dataset --num_classes=7 --model_type=ir50 --imb_factor=0.1
+python3 analyze_classifier.py --dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 \
+ --aligner_path=checkpoint/adaface_vit_base_kprpe_webface12m \
+--save_path=results/raf_compare --mode=compare --model_type=kprpe12m --model_paths checkpoint/raf-kprpe_ce checkpoint/raf-kprpe-kbcl  \
+--model_names CE KBCL_ETF --ckpt_type=best

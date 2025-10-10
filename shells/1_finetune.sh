@@ -5,3 +5,4 @@ python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --model_type=ir50 --feature_branch=True --use_bn=True \
 --loss=KBCL --kcl_k=10 --beta=0.3 --temperature=0.1 --utilize_target_centers=True --moco_k=$k --balanced_cl=True
 done
+

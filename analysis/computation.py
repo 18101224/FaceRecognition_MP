@@ -2,6 +2,7 @@ import numpy as np
 import torch 
 from tqdm import tqdm
 from sklearn.manifold import TSNE
+from collections import Counter
 
 def compute_confusion_matrix(preds: np.ndarray, labels: np.ndarray):
     """
@@ -40,6 +41,9 @@ def normalize_confusion_matrix(cm: np.ndarray, labels: np.ndarray):
 
 @torch.inference_mode()
 def get_predictions(model,loader,aligner=None):
+    '''
+    returns : preds, labels, confs as numpy array 
+    '''
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     preds = []
     labels = []
@@ -57,6 +61,14 @@ def get_predictions(model,loader,aligner=None):
     preds = torch.argmax(confs,dim=1).numpy()
     labels = torch.cat(labels,dim=0).numpy()
     return preds, labels, confs.numpy()
+
+def get_macro_accuracy(preds, labels):
+    counts = np.bincount(labels)
+    macro_accuracy = np.zeros(len(counts))
+    for i in range(len(counts)):
+        macro_accuracy[i] = (preds[labels==i] == i).sum() / counts[i]
+    macro_accuracy = macro_accuracy.mean()
+    return macro_accuracy
 
 @torch.no_grad()
 def get_features(model, loader, aligner=None):
