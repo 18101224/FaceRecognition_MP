@@ -227,6 +227,7 @@ class Trainer:
         self.log = defaultdict(list)
         self.save_dir = f'checkpoint/{self.id}'
         self.best_acc = -float('inf') if not self.args.resume_path is not None else ckpt['best_acc']
+        self.best_macro_acc = -float('inf') if not self.args.resume_path is not None else (ckpt['best_macro_acc'] if 'best_macro_acc' in ckpt.keys() else -float('inf'))
         self.epoch = 0 if not self.args.resume_path is not None else ckpt['epoch'] + 1
     
     @torch.no_grad()
@@ -369,10 +370,11 @@ class Trainer:
         total_macro_acc = (total_macro_acc / torch.tensor(self.valid_loader.dataset.get_img_num_per_cls(), device=torch.device('cuda'), dtype=torch.float32)).float().mean().detach().cpu().item()
         return total_acc / N, total_loss/N, balanced_acc / NB, balanced_loss / NB, total_macro_acc
 
-    def save(self, valid_acc):
+    def save(self, valid_acc, valid_macro_acc):
         if valid_acc > self.best_acc : 
             self.best_acc = valid_acc
-        
+        if valid_macro_acc > self.best_macro_acc : 
+            self.best_macro_acc = valid_macro_acc
         if self.args.world_size == 1 or self.args.rank == 0 :
             m = self.model if self.args.world_size == 1 else self.model.module
             ckpt = {
@@ -380,6 +382,7 @@ class Trainer:
                 'optimizer_state_dict' : self.opt.state_dict(),
                 'scheduler_state_dict' : self.scheduler.state_dict() if self.scheduler is not None else None,
                 'best_acc' : self.best_acc,
+                'best_macro_acc' : self.best_macro_acc,
                 'epoch' : self.epoch,
                 'log' : self.log,
                 'args' : self.args,
@@ -393,6 +396,8 @@ class Trainer:
             torch.save(ckpt, f'{self.save_dir}/latest.pth')
             if valid_acc == self.best_acc : 
                 torch.save(ckpt, f'{self.save_dir}/best.pth')
+            if valid_macro_acc == self.best_macro_acc : 
+                torch.save(ckpt, f'{self.save_dir}/best_macro_acc.pth')
 
     def run_epoch(self):
         train_acc, train_loss_for_log = self.run_train_epoch()
@@ -417,7 +422,7 @@ class Trainer:
             })
             # save angle matrix image each epoch
             self.save_angle_mat(self.epoch)
-        self.save(valid_acc)
+        self.save(valid_acc, valid_macro_acc)
 
 
     def train(self):

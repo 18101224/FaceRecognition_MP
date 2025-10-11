@@ -40,27 +40,34 @@ def normalize_confusion_matrix(cm: np.ndarray, labels: np.ndarray):
     return norm_cm
 
 @torch.inference_mode()
-def get_predictions(model,loader,aligner=None):
+def get_predictions(model,loader,aligner=None, get_features=False):
     '''
     returns : preds, labels, confs as numpy array 
     '''
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     preds = []
     labels = []
+    features = []
+    features_branch = []
     for img, label in tqdm(loader):
         img = img.to(device)
         label = label.to(device)
         if aligner:
             _,_,ldmk,_,_,_ = aligner(img)
-            pred = model(img,keypoint=ldmk)
+            pred, feat_branch, c, feat  = model(img,keypoint=ldmk, features=True, wo_branch=True)
         else:
-            pred = model(img)
+            pred, feat_branch, c, feat  = model(img, features=True, wo_branch=True)
         preds.append(pred.detach().cpu())
         labels.append(label.detach().cpu())
+        if get_features : 
+            features.append(feat.detach().cpu())
+            features_branch.append(feat_branch.detach().cpu())
     confs = torch.cat(preds,dim=0)
     preds = torch.argmax(confs,dim=1).numpy()
     labels = torch.cat(labels,dim=0).numpy()
-    return preds, labels, confs.numpy()
+    features = torch.cat(features,dim=0).numpy()
+    features_branch = torch.cat(features_branch,dim=0).numpy()
+    return preds, labels, confs.numpy(), features, features_branch, c.detach().cpu().numpy()
 
 def get_macro_accuracy(preds, labels):
     counts = np.bincount(labels)

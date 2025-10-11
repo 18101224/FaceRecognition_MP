@@ -40,9 +40,14 @@ class Analysis:
         plot_label_distribution(self.datasets[0].labels, self.datasets[1].labels, self.save_path, model_name=getattr(self.args, 'model_name', None))
 
     def analyze_model_performance(self):
-        train_preds, train_labels, train_confs = get_predictions(self.model, self.loaders[0], self.aligner)
-        valid_preds, valid_labels, valid_confs = get_predictions(self.model, self.loaders[1], self.aligner)
-        valid_preds_balanced, valid_labels_balanced, valid_confs_balanced = get_predictions(self.model, self.loaders[2], self.aligner) if len(self.loaders) == 3 else (None, None, None)
+        train_preds, train_labels, train_logits, train_features, train_features_branch, _ = get_predictions(self.model, self.loaders[0], self.aligner,get_features=True)
+        valid_preds, valid_labels, valid_logits, valid_features, valid_features_branch, centers_af_branch = get_predictions(self.model, self.loaders[1], self.aligner,get_features=True)
+        valid_preds_balanced, valid_labels_balanced, valid_confs_balanced, _, _, _ = get_predictions(self.model, self.loaders[2], self.aligner,get_features=True) if len(self.loaders) == 3 else (None, None, None, None, None, None)
+        centers_wo_branch = self.model.get_kernel().T.detach().cpu().numpy()
+        # wo branch version 
+        visualize_neural_collapse(X_tr=train_features, Z_tr=train_logits, y_tr=train_labels, X_va=valid_features, Z_va=valid_logits, y_va=valid_labels, W=centers_wo_branch, savepath=os.path.join(self.save_path,'wo_branch'))
+        # w. branch version 
+        visualize_neural_collapse(X_tr=train_features_branch, Z_tr=train_logits, y_tr=train_labels, X_va=valid_features_branch, Z_va=valid_logits, y_va=valid_labels, W=centers_af_branch, savepath=os.path.join(self.save_path,'w_branch'))
         valid_macro_accuracy = get_macro_accuracy(valid_preds, valid_labels)
 
         #compute confusion matrix

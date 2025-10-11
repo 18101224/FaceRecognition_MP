@@ -272,7 +272,7 @@ class ImbalancedModel(nn.Module):
             w = self.bn(w)
         return nn.functional.normalize(z, dim=-1), nn.functional.normalize(w, dim=-1)
 
-    def forward(self, x, features=False, keypoint=None ):
+    def forward(self, x, features=False, keypoint=None, wo_branch=False):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
@@ -321,7 +321,10 @@ class ImbalancedModel(nn.Module):
         # if CL training 
         if features : 
             processed_feat, centers = self.process_feature_branch(z_, weight) if self.feature_branch else (z_, weight.T)
-            return logit, processed_feat , centers
+            if not wo_branch :
+                return logit, processed_feat , centers
+            else: # when wo_branch is True 
+                return logit, processed_feat, centers, z_
         else:
             return logit 
     

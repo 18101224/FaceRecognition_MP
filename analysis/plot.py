@@ -3,6 +3,9 @@ import numpy as np
 import os 
 import seaborn as sns
 from collections import Counter 
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 def plot_label_distribution(train_labels, valid_labels, save_path, model_name=None):
     """
@@ -678,3 +681,294 @@ def plot_feature_distribution(features:np.ndarray, labels:np.ndarray, W:np.ndarr
         plt.savefig(temp_save_path)
         plt.close()
         
+
+def visualize_neural_collapse(
+    # Required inputs (order matters):
+    X_tr,          # np.ndarray or torch.Tensor, shape (N_tr, D): TRAIN feature vectors (penultimate/features)
+    Z_tr,          # np.ndarray or torch.Tensor, shape (N_tr, C): TRAIN logits (pre-softmax), kept for completeness
+    y_tr,          # np.ndarray or torch.Tensor, shape (N_tr,): TRAIN integer labels in [0, C-1] (argmax(Z) -> label assumed)
+    X_va,          # np.ndarray or torch.Tensor, shape (N_va, D): VALID feature vectors
+    Z_va,          # np.ndarray or torch.Tensor, shape (N_va, C): VALID logits (pre-softmax), used to decide misclassification
+    y_va,          # np.ndarray or torch.Tensor, shape (N_va,): VALID integer labels in [0, C-1]
+
+    # Optional classifier params (for extended NC checks; not required for plotting):
+    W=None,        # np.ndarray or torch.Tensor, shape (C, D): last-layer weights (rows per class); plotted if provided
+    b=None,        # np.ndarray or torch.Tensor, shape (C,): last-layer bias (unused for plotting)
+
+    *,  # plotting/analysis options
+    metric='cosine',              # fallback nearest-class-mean metric if logits not provided/usable: 'cosine' or 'euclidean'
+    svd_center=True,              # center features before SVD
+    tsne_perplexity=30,
+    tsne_random_state=42,
+    max_pca_dim=50,
+    figsize=(14, 12),
+    dpi=300,                      # high resolution
+    savepath=None                 # dir or prefix; saves as dir/{tsne,svd}.png if dir else {prefix}_{tsne,svd}.png
+):
+    """
+    Inputs (required):
+      - X_tr: (N_tr, D) train features.
+      - Z_tr: (N_tr, C) train logits (pre-softmax), kept for completeness.
+      - y_tr: (N_tr,) train labels in [0, C-1].
+      - X_va: (N_va, D) valid features.
+      - Z_va: (N_va, C) valid logits (pre-softmax), used for argmax prediction.
+      - y_va: (N_va,) valid labels in [0, C-1].
+
+    Inputs (optional):
+      - W: (C, D) classifier weights; if given, included in t-SNE as class-colored triangles for NC3-style alignment visualization.
+      - b: (C,) classifier bias; not used in plots.
+
+    What it does:
+      1) Dimensional collapse: SVD on centered train features to compute explained-variance ratio and energy of top (C-1) components.
+      2) t-SNE scatter:
+         - Train points: colored by class, semi-transparent.
+         - Valid points: colored by true class, opaque; misclassified (by argmax of Z_va) marked with 'x'.
+         - Class means: per-class means for train and valid, emphasized as large ring markers.
+         - Optional W rows: per-class triangles in the same color.
+      3) Fallback for misclassification (if Z_va is None or invalid): nearest-class-mean (train means) under chosen metric.
+
+    Notes:
+      - SVD uses numpy.linalg.svd; explained variance is proportional to squared singular values and reported as ratios.
+      - t-SNE implemented via sklearn.manifold.TSNE; perplexity must be < n_samples and typically in [5, 50].
+      - Neural collapse typically exhibits effective dimension near (C-1) and class means aligning with classifier weights.
+      - Assumes logits columns correspond to label ids in [0, C-1]; if labels are not contiguous, remap labels/logits before calling.
+    """
+
+    # -------------------- utils --------------------
+    def to_numpy(x):
+        try:
+            import torch
+            if isinstance(x, torch.Tensor):
+                return x.detach().cpu().numpy()
+        except Exception:
+            pass
+        return None if x is None else np.asarray(x)
+
+    def l2_normalize(Z, axis=1, eps=1e-12):
+        nrm = np.linalg.norm(Z, axis=axis, keepdims=True)
+        return Z / np.clip(nrm, eps, None)
+
+    def class_means(X, y, classes_):
+        means = []
+        for c in classes_:
+            idx = (y == c)
+            means.append(X[idx].mean(axis=0) if idx.any() else np.full(X.shape[1], np.nan))
+        return np.vstack(means)
+    # ------------------------------------------------
+
+    # Convert to numpy
+    X_tr = to_numpy(X_tr).astype(np.float64)
+    Z_tr = None if Z_tr is None else to_numpy(Z_tr).astype(np.float64)
+    y_tr = to_numpy(y_tr).astype(int)
+    X_va = to_numpy(X_va).astype(np.float64)
+    Z_va = None if Z_va is None else to_numpy(Z_va).astype(np.float64)
+    y_va = to_numpy(y_va).astype(int)
+
+    if W is not None:
+        W = to_numpy(W).astype(np.float64)
+
+    # Basic checks
+    assert X_tr.ndim == 2 and X_va.ndim == 2, "Features must be (N, D)"
+    assert y_tr.ndim == 1 and y_va.ndim == 1, "Labels must be (N,)"
+    if Z_tr is not None:
+        assert Z_tr.ndim == 2 and Z_tr.shape[0] == X_tr.shape[0], "Z_tr must be (N_tr, C)"
+    if Z_va is not None:
+        assert Z_va.ndim == 2 and Z_va.shape[0] == X_va.shape[0], "Z_va must be (N_va, C)"
+
+    classes = np.unique(y_tr)
+    C = len(classes)
+    D = X_tr.shape[1]
+
+    # 1) SVD on train features (global-centered)
+    Xs = X_tr - X_tr.mean(axis=0, keepdims=True) if svd_center else X_tr
+    U, S, Vh = np.linalg.svd(Xs, full_matrices=False)
+    n = Xs.shape[0]
+    expl_var = (S ** 2) / max(n - 1, 1)
+    expl_var_ratio = expl_var / expl_var.sum() if expl_var.sum() > 0 else expl_var
+    k = min(C - 1, expl_var_ratio.size) if C >= 2 else 1
+    energy_top_cminus1 = float(expl_var_ratio[:k].sum())
+
+    # 2) Class means (train, valid)
+    train_means = class_means(X_tr, y_tr, classes)
+    valid_means = class_means(X_va, y_va, classes)
+
+    # 3) Validation predictions: prefer logits argmax; fallback to NCM
+    if (Z_va is not None) and (Z_va.shape[1] >= C):
+        # Assumes logits columns correspond to label ids in [0, C-1]
+        y_va_pred = np.argmax(Z_va, axis=1)
+    else:
+        means_for_pred = train_means.copy()
+        if metric == 'cosine':
+            X_pred = l2_normalize(X_va)
+            M_pred = l2_normalize(means_for_pred)
+            sims = X_pred @ M_pred.T
+            y_va_pred = classes[np.argmax(sims, axis=1)]
+        else:
+            x2 = (X_va ** 2).sum(axis=1, keepdims=True)
+            m2 = (means_for_pred ** 2).sum(axis=1)[None, :]
+            dots = X_va @ means_for_pred.T
+            d2 = x2 + m2 - 2 * dots
+            y_va_pred = classes[np.argmin(d2, axis=1)]
+    mis_va = (y_va_pred != y_va)
+
+    # 4) t-SNE embedding set: train, valid, means, optional W
+    blocks = [X_tr, X_va, train_means, valid_means]
+    has_W = (W is not None)
+    if has_W:
+        assert W.ndim == 2 and W.shape[1] == D, "W must be (C, D)"
+        W_norm = np.linalg.norm(W, axis=1, keepdims=True)
+        W_safe = W / np.clip(W_norm, 1e-12, None)  # direction-only
+        blocks.append(W_safe)
+
+    X_concat = np.vstack(blocks)
+    n_tr, n_va = len(X_tr), len(X_va)
+    idx_means_tr = np.arange(n_tr + n_va, n_tr + n_va + C)
+    idx_means_va = np.arange(n_tr + n_va + C, n_tr + n_va + 2 * C)
+    if has_W:
+        idx_W_start = n_tr + n_va + 2 * C
+        idx_W = np.arange(idx_W_start, idx_W_start + W.shape[0])
+
+    # Standardize -> optional PCA -> t-SNE
+    Xz = StandardScaler(with_mean=True, with_std=True).fit_transform(X_concat)
+    if Xz.shape[1] > max_pca_dim:
+        pca = PCA(n_components=max_pca_dim, random_state=tsne_random_state)
+        Xz = pca.fit_transform(Xz)
+
+    N_all = Xz.shape[0]
+    effective_perp = min(tsne_perplexity, max(5, min(50, N_all - 1)))
+    tsne = TSNE(
+        n_components=2,
+        perplexity=effective_perp,
+        init='pca',
+        learning_rate='auto',
+        random_state=tsne_random_state,
+        method='barnes_hut'
+    )
+    Y = tsne.fit_transform(Xz)
+
+    # Split back
+    Y_tr = Y[:n_tr]
+    Y_va = Y[n_tr:n_tr + n_va]
+    Y_means_tr = Y[idx_means_tr]
+    Y_means_va = Y[idx_means_va]
+    if has_W:
+        Y_W = Y[idx_W]
+
+    # 5) Plotting
+    from matplotlib.lines import Line2D
+    cmap = plt.cm.get_cmap('tab10', min(10, C)) if C <= 10 else plt.cm.get_cmap('tab20', min(20, C))
+    color_map = {c: cmap(i % cmap.N) for i, c in enumerate(classes)}
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+    # Train points (semi-transparent)
+    for c in classes:
+        idx = (y_tr == c)
+        if idx.any():
+            ax.scatter(Y_tr[idx, 0], Y_tr[idx, 1],
+                       s=12, c=[color_map[c]], alpha=0.25, marker='o', linewidths=0)
+
+    # Valid points: correct circles
+    for c in classes:
+        idx = (y_va == c) & (~mis_va)
+        if idx.any():
+            ax.scatter(Y_va[idx, 0], Y_va[idx, 1],
+                       s=22, c=[color_map[c]], alpha=1.0, marker='o',
+                       edgecolors='white', linewidths=0.5)
+
+    # Misclassified: 'x' colored by true label
+    if mis_va.any():
+        ax.scatter(Y_va[mis_va, 0], Y_va[mis_va, 1],
+                   s=36, c=[color_map[cl] for cl in y_va[mis_va]],
+                   alpha=1.0, marker='x', linewidths=1.2)
+
+    # Class means: train circle (ring), valid square (ring)
+    for i, c in enumerate(classes):
+        ax.scatter(Y_means_tr[i, 0], Y_means_tr[i, 1],
+                   s=260, facecolors='none', edgecolors='k', linewidths=1.6, marker='o')
+        ax.scatter(Y_means_va[i, 0], Y_means_va[i, 1],
+                   s=220, facecolors='none', edgecolors='k', linewidths=1.6, marker='s')
+
+    # Optional W rows as triangles
+    if has_W:
+        # Assume row i corresponds to label i in [0, C-1]; ensure i < len(classes)
+        for i, c in enumerate(classes):
+            if i < W.shape[0]:
+                ax.scatter(Y_W[i, 0], Y_W[i, 1],
+                           s=280, c=[color_map[c]], marker='^',
+                           edgecolors='k', linewidths=1.3, alpha=1.0)
+
+    # Legend
+    legend_elems = [
+        Line2D([0], [0], marker='o', color='none', label='Train (semi-transparent)',
+               markerfacecolor='gray', alpha=0.25, markersize=6, markeredgewidth=0),
+        Line2D([0], [0], marker='o', color='none', label='Valid (correct)',
+               markerfacecolor='gray', alpha=1.0, markeredgecolor='white', markeredgewidth=0.5, markersize=7),
+        Line2D([0], [0], marker='x', color='gray', label='Valid (misclassified)',
+               markersize=7, linewidth=1.2),
+        Line2D([0], [0], marker='o', color='k', label='Train class mean',
+               markerfacecolor='none', markersize=10, markeredgewidth=1.6),
+        Line2D([0], [0], marker='s', color='k', label='Valid class mean',
+               markerfacecolor='none', markersize=9, markeredgewidth=1.6),
+    ]
+    if has_W:
+        legend_elems.append(Line2D([0], [0], marker='^', color='k', label='Classifier W (rows)',
+                                   markerfacecolor='none', markersize=10, markeredgewidth=1.3))
+    ax.legend(handles=legend_elems, loc='best', frameon=True)
+
+    ax.set_title("t-SNE of Train/Valid Features with Class Means + W")
+    ax.set_xlabel("t-SNE dim 1")
+    ax.set_ylabel("t-SNE dim 2")
+    ax.grid(True, alpha=0.15)
+
+    # SVD scree
+    fig_svd, ax_svd = plt.subplots(figsize=(8, 4), dpi=dpi)
+    ax_svd.plot(np.arange(1, len(expl_var_ratio) + 1), expl_var_ratio, '-o', ms=3)
+    ax_svd.axvline(x=k, color='r', linestyle='--', linewidth=1.0)
+    ax_svd.set_title(f"SVD explained variance ratio (top C-1={k} sum={energy_top_cminus1:.3f})")
+    ax_svd.set_xlabel("component")
+    ax_svd.set_ylabel("explained variance ratio")
+    ax_svd.grid(True, alpha=0.2)
+
+    # Save
+    if savepath:
+        # Interpret savepath as directory or prefix
+        if os.path.isdir(savepath) or str(savepath).endswith(('/', '\\')):
+            tsne_path = os.path.join(savepath, "tsne.png")
+            svd_path = os.path.join(savepath, "svd.png")
+        else:
+            tsne_path = f"{savepath}_tsne.png"
+            svd_path = f"{savepath}_svd.png"
+        fig.savefig(tsne_path, bbox_inches='tight')
+        fig_svd.savefig(svd_path, bbox_inches='tight')
+
+    # Optional alignment summary if W provided
+    align = None
+    if has_W:
+        W_dir = W_safe  # unit-normalized rows
+        TM_dir = l2_normalize(train_means)
+        # cosine similarity per class index (assumes row i <-> label i)
+        m = min(W_dir.shape[0], TM_dir.shape[0])
+        cos = (W_dir[:m] * TM_dir[:m]).sum(axis=1)
+        align = {
+            "cosine_W_trainMean_per_class": cos,
+            "mean_cosine": float(np.nanmean(cos)),
+        }
+
+    return {
+        "svd": {
+            "singular_values": S,
+            "explained_variance_ratio": expl_var_ratio,
+            "energy_top_C_minus_1": energy_top_cminus1,
+            "num_classes": int(C),
+            "feature_dim": int(D),
+            "centered": bool(svd_center),
+            "k_C_minus_1": int(k),
+        },
+        "pred": {
+            "y_va_pred_used": y_va_pred,
+            "misclassified_mask": mis_va,
+        },
+        "align": align,
+        "figures": {"tsne": fig, "svd": fig_svd}
+    }
