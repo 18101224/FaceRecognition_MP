@@ -682,6 +682,7 @@ def plot_feature_distribution(features:np.ndarray, labels:np.ndarray, W:np.ndarr
         plt.close()
         
 
+
 def visualize_neural_collapse(
     # Required inputs (order matters):
     X_tr,          # np.ndarray or torch.Tensor, shape (N_tr, D): TRAIN feature vectors (penultimate/features)
@@ -703,7 +704,7 @@ def visualize_neural_collapse(
     max_pca_dim=50,
     figsize=(14, 12),
     dpi=300,                      # high resolution
-    savepath=None                 # dir or prefix; saves as dir/{tsne,svd}.png if dir else {prefix}_{tsne,svd}.png
+    savepath=None                 # dir or prefix; saves as dir/{tsne,svd,angles}.png if dir else {prefix}_{tsne,svd,angles}.png
 ):
     """
     Inputs (required):
@@ -725,13 +726,13 @@ def visualize_neural_collapse(
          - Valid points: colored by true class, opaque; misclassified (by argmax of Z_va) marked with 'x'.
          - Class means: per-class means for train and valid, emphasized as large ring markers.
          - Optional W rows: per-class triangles in the same color.
-      3) Fallback for misclassification (if Z_va is None or invalid): nearest-class-mean (train means) under chosen metric.
+      3) Class clustering table (angles in degrees):
+         - For each class, compute angles between points and their set’s mean (train→train mean, valid→valid mean), then report mean/std and counts.
 
     Notes:
-      - SVD uses numpy.linalg.svd; explained variance is proportional to squared singular values and reported as ratios.
-      - t-SNE implemented via sklearn.manifold.TSNE; perplexity must be < n_samples and typically in [5, 50].
-      - Neural collapse typically exhibits effective dimension near (C-1) and class means aligning with classifier weights.
-      - Assumes logits columns correspond to label ids in [0, C-1]; if labels are not contiguous, remap labels/logits before calling.
+      - Angle θ between vectors a, b follows cos θ = (a·b)/(||a||||b||); for unit vectors, θ = arccos(clip(a·b, -1, 1)) [radians] → degrees [web:111][web:91][web:100].
+      - Matplotlib Axes.table is used to render the per-class table within a figure [web:80][web:81].
+      - t-SNE perplexity must be < n_samples and typically in [5, 50] [web:13][web:7].
     """
 
     # -------------------- utils --------------------
@@ -754,6 +755,16 @@ def visualize_neural_collapse(
             idx = (y == c)
             means.append(X[idx].mean(axis=0) if idx.any() else np.full(X.shape[1], np.nan))
         return np.vstack(means)
+
+    def angles_deg_to_mean(X, mean_vec):
+        # normalize to unit vectors
+        Xn = l2_normalize(X)
+        mn = mean_vec / max(np.linalg.norm(mean_vec), 1e-12)
+        # cosines and safe arccos in radians, then degrees
+        cosv = np.clip(Xn @ mn, -1.0, 1.0)
+        ang_rad = np.arccos(cosv)
+        ang_deg = np.degrees(ang_rad)
+        return ang_deg
     # ------------------------------------------------
 
     # Convert to numpy
@@ -763,7 +774,6 @@ def visualize_neural_collapse(
     X_va = to_numpy(X_va).astype(np.float64)
     Z_va = None if Z_va is None else to_numpy(Z_va).astype(np.float64)
     y_va = to_numpy(y_va).astype(int)
-
     if W is not None:
         W = to_numpy(W).astype(np.float64)
 
@@ -794,7 +804,6 @@ def visualize_neural_collapse(
 
     # 3) Validation predictions: prefer logits argmax; fallback to NCM
     if (Z_va is not None) and (Z_va.shape[1] >= C):
-        # Assumes logits columns correspond to label ids in [0, C-1]
         y_va_pred = np.argmax(Z_va, axis=1)
     else:
         means_for_pred = train_means.copy()
@@ -854,7 +863,7 @@ def visualize_neural_collapse(
     if has_W:
         Y_W = Y[idx_W]
 
-    # 5) Plotting
+    # 5) Plotting t-SNE
     from matplotlib.lines import Line2D
     cmap = plt.cm.get_cmap('tab10', min(10, C)) if C <= 10 else plt.cm.get_cmap('tab20', min(20, C))
     color_map = {c: cmap(i % cmap.N) for i, c in enumerate(classes)}
@@ -891,14 +900,12 @@ def visualize_neural_collapse(
 
     # Optional W rows as triangles
     if has_W:
-        # Assume row i corresponds to label i in [0, C-1]; ensure i < len(classes)
         for i, c in enumerate(classes):
             if i < W.shape[0]:
                 ax.scatter(Y_W[i, 0], Y_W[i, 1],
                            s=280, c=[color_map[c]], marker='^',
                            edgecolors='k', linewidths=1.3, alpha=1.0)
 
-    # Legend
     legend_elems = [
         Line2D([0], [0], marker='o', color='none', label='Train (semi-transparent)',
                markerfacecolor='gray', alpha=0.25, markersize=6, markeredgewidth=0),
@@ -930,24 +937,70 @@ def visualize_neural_collapse(
     ax_svd.set_ylabel("explained variance ratio")
     ax_svd.grid(True, alpha=0.2)
 
+    # 6) Per-class clustering angles (degrees) table
+    rows = []
+    cluster = {
+        "per_class": [],
+        "columns": ["class", "N_tr", "mean_deg_tr", "std_deg_tr", "N_va", "mean_deg_va", "std_deg_va"]
+    }
+    for i, c in enumerate(classes):
+        # train
+        idx_tr = (y_tr == c)
+        ntr = int(idx_tr.sum())
+        if ntr > 0 and np.all(np.isfinite(train_means[i])):
+            ang_tr = angles_deg_to_mean(X_tr[idx_tr], train_means[i])
+            mtr = float(np.nanmean(ang_tr))
+            str_ = float(np.nanstd(ang_tr, ddof=0))
+        else:
+            mtr, str_, ang_tr = np.nan, np.nan, np.array([])
+        # valid
+        idx_va = (y_va == c)
+        nva = int(idx_va.sum())
+        if nva > 0 and np.all(np.isfinite(valid_means[i])):
+            ang_va = angles_deg_to_mean(X_va[idx_va], valid_means[i])
+            mva = float(np.nanmean(ang_va))
+            sva = float(np.nanstd(ang_va, ddof=0))
+        else:
+            mva, sva, ang_va = np.nan, np.nan, np.array([])
+        rows.append([str(c), f"{ntr}", f"{mtr:.2f}", f"{str_:.2f}", f"{nva}", f"{mva:.2f}", f"{sva:.2f}"])
+        cluster["per_class"].append({
+            "class": int(c),
+            "N_tr": ntr, "mean_deg_tr": mtr, "std_deg_tr": str_,
+            "N_va": nva, "mean_deg_va": mva, "std_deg_va": sva
+        })
+
+    # Render table figure
+    fig_tbl, ax_tbl = plt.subplots(figsize=(10, 0.6 + 0.35*max(1, len(rows))), dpi=dpi)
+    ax_tbl.axis('off')
+    table = ax_tbl.table(
+        cellText=rows,
+        colLabels=cluster["columns"],
+        loc='center'
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1, 1.3)
+    ax_tbl.set_title("Per-class angular clustering (degrees): mean ± std", pad=8)
+
     # Save
     if savepath:
-        # Interpret savepath as directory or prefix
         if os.path.isdir(savepath) or str(savepath).endswith(('/', '\\')):
             tsne_path = os.path.join(savepath, "tsne.png")
             svd_path = os.path.join(savepath, "svd.png")
+            tbl_path = os.path.join(savepath, "angles.png")
         else:
             tsne_path = f"{savepath}_tsne.png"
             svd_path = f"{savepath}_svd.png"
+            tbl_path = f"{savepath}_angles.png"
         fig.savefig(tsne_path, bbox_inches='tight')
         fig_svd.savefig(svd_path, bbox_inches='tight')
+        fig_tbl.savefig(tbl_path, bbox_inches='tight')
 
     # Optional alignment summary if W provided
     align = None
     if has_W:
         W_dir = W_safe  # unit-normalized rows
         TM_dir = l2_normalize(train_means)
-        # cosine similarity per class index (assumes row i <-> label i)
         m = min(W_dir.shape[0], TM_dir.shape[0])
         cos = (W_dir[:m] * TM_dir[:m]).sum(axis=1)
         align = {
@@ -969,6 +1022,7 @@ def visualize_neural_collapse(
             "y_va_pred_used": y_va_pred,
             "misclassified_mask": mis_va,
         },
+        "cluster": cluster,  # per-class angular stats
         "align": align,
-        "figures": {"tsne": fig, "svd": fig_svd}
+        "figures": {"tsne": fig, "svd": fig_svd, "angles": fig_tbl}
     }
