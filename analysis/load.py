@@ -57,14 +57,14 @@ def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
             dataset = Large_dataset(root=dataset_path, mode=train, transform=None)
             result.append(dataset)
         elif 'RAF-DB' in dataset_name:
-            dataset = FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=False)
+            dataset = FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=True)
             result.append(dataset)
             if not train == 'train':
-                result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),balanced=True,idx=False))
+                result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),balanced=True,idx=True))
         elif 'AffectNet' in dataset_name:
-            result.append(FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=False))
+            result.append(FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=True))
         elif 'CAER' in dataset_name:
-            result.append(FER(args=args, train=(train=='train'), transform=get_fer_transforms(train=False,model_type=args.model_type),idx=False, imb_factor=args.imb_factor ))
+            result.append(FER(args=args, train=(train=='train'), transform=get_fer_transforms(train=False,model_type=args.model_type),idx=True, imb_factor=args.imb_factor ))
     return result
     
 def load_loaders(datasets):

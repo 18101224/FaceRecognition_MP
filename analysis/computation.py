@@ -3,6 +3,7 @@ import torch
 from tqdm import tqdm
 from sklearn.manifold import TSNE
 from collections import Counter
+from typing import Tuple
 
 def compute_confusion_matrix(preds: np.ndarray, labels: np.ndarray):
     """
@@ -40,7 +41,7 @@ def normalize_confusion_matrix(cm: np.ndarray, labels: np.ndarray):
     return norm_cm
 
 @torch.inference_mode()
-def get_predictions(model,loader,aligner=None, get_features=False):
+def get_predictions(model,loader,aligner=None, get_features=True):
     '''
     returns : preds, labels, confs as numpy array 
     '''
@@ -49,7 +50,8 @@ def get_predictions(model,loader,aligner=None, get_features=False):
     labels = []
     features = []
     features_branch = []
-    for img, label in tqdm(loader):
+    indices = []
+    for img, label, idx in tqdm(loader):
         img = img.to(device)
         label = label.to(device)
         if aligner:
@@ -62,12 +64,14 @@ def get_predictions(model,loader,aligner=None, get_features=False):
         if get_features : 
             features.append(feat.detach().cpu())
             features_branch.append(feat_branch.detach().cpu())
+            indices.append(idx.detach().cpu())
     confs = torch.cat(preds,dim=0)
     preds = torch.argmax(confs,dim=1).numpy()
     labels = torch.cat(labels,dim=0).numpy()
     features = torch.cat(features,dim=0).numpy()
     features_branch = torch.cat(features_branch,dim=0).numpy()
-    return preds, labels, confs.numpy(), features, features_branch, c.detach().cpu().numpy()
+    indices = torch.cat(indices,dim=0).numpy()
+    return preds, labels, confs.numpy(), features, features_branch, c.detach().cpu().numpy(), indices
 
 def get_macro_accuracy(preds, labels):
     counts = np.bincount(labels)
@@ -232,3 +236,105 @@ def get_centers(features, labels):
         centers.append(center)
     centers = np.concatenate(centers, axis=0)
     return centers
+
+
+def find_nearest_training_for_misclassified(
+    training_features: np.ndarray,
+    validation_features: np.ndarray,
+    validation_logits: np.ndarray,
+    validation_labels: np.ndarray,
+    target_centers: np.ndarray,
+    k: int = 1,
+    use_faiss: bool = False,
+    batch_size: int = 8192,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    오분류된 validation 샘플만 선별 → target_centers로 CE 손실 계산 → 손실 내림차순 정렬 →
+    정렬 순서대로 각 샘플의 top-k 가까운 training 인덱스와 유클리드 거리를 반환.
+
+    입력:
+    - training_features: (N_train, D) float
+    - validation_features: (N_val, D) float
+    - validation_logits: (N_val, C) float  # 오분류 판정용
+    - validation_labels: (N_val,) int
+    - target_centers: (C, D) float         # 손실 계산용 분류기 가중치/타깃 센터
+    - k: top-k 근접 이웃 수
+    - use_faiss: True면 Faiss IndexFlatL2 사용(설치 필요)
+    - batch_size: NumPy 경로에서 쿼리 배치 크기
+
+    반환:
+    - mis_val_idx_sorted: (M,) 손실 내림차순으로 정렬된 오분류된 validation 인덱스
+    - nn_indices: (M, k) 각 오분류 샘플의 top-k training 인덱스
+    - nn_dist: (M, k) 유클리드 거리
+    """
+    # 1) 오분류 샘플 선별
+    val_pred = np.argmax(validation_logits, axis=1)
+    mis_mask = val_pred != validation_labels
+    mis_val_idx = np.where(mis_mask)[0]
+    if mis_val_idx.size == 0:
+        return mis_val_idx, np.empty((0, 0), dtype=int), np.empty((0, 0), dtype=float)
+
+    # 2) target_centers로 CE 손실 계산(Log-Sum-Exp 트릭, 수치안정)
+    #    logits = val_feats @ target_centers^T
+    val_feats_mis = validation_features[mis_val_idx].astype(np.float64, copy=False)  # (M, D)
+    centers = target_centers.astype(np.float64, copy=False)                          # (C, D)
+    logits = val_feats_mis @ centers.T                                              # (M, C)
+
+    # CE(x,y) = - z_y + logsumexp(z)
+    # logsumexp(z) = m + log(sum(exp(z - m))), where m = max(z)
+    m = np.max(logits, axis=1, keepdims=True)                                       # (M, 1)
+    z_shift = logits - m
+    lse = m[:, 0] + np.log(np.sum(np.exp(z_shift), axis=1))                         # (M,)
+    y_mis = validation_labels[mis_val_idx]
+    z_y = logits[np.arange(logits.shape[0]), y_mis]                                  # (M,)
+    ce_loss = -z_y + lse                                                             # (M,)
+
+    # 손실 내림차순 정렬
+    order = np.argsort(-ce_loss)
+    mis_val_idx_sorted = mis_val_idx[order]
+    # 이 순서로 쿼리 행렬 구성
+    Q = validation_features[mis_val_idx_sorted]                                      # (M, D)
+
+    # 3) top-k 최근접 트레이닝 검색
+    X = training_features
+    n_train = X.shape[0]
+    k_eff = int(min(max(k, 1), n_train))
+
+    # Faiss 경로(가능하면 사용)
+    if use_faiss:
+        try:
+            import faiss  # type: ignore
+            d = X.shape[1]
+            index = faiss.IndexFlatL2(d)
+            index.add(X.astype(np.float32, copy=False))
+            D2, I = index.search(Q.astype(np.float32, copy=False), k_eff)  # L2^2
+            D = np.sqrt(np.maximum(D2, 0.0))
+            return mis_val_idx_sorted, I.astype(int, copy=False), D.astype(float, copy=False)
+        except Exception:
+            # 실패 시 NumPy 경로로 폴백
+            pass
+
+    # NumPy 경로(배치 처리, 벡터화 L2)
+    X = X.astype(np.float64, copy=False)
+    Q = Q.astype(np.float64, copy=False)
+    X_norm2 = np.sum(X * X, axis=1)  # (N_train,)
+    M = Q.shape[0]
+    nn_indices = np.empty((M, k_eff), dtype=np.int64)
+    nn_dists = np.empty((M, k_eff), dtype=np.float64)
+
+    for s in range(0, M, batch_size):
+        e = min(s + batch_size, M)
+        Qb = Q[s:e]                                                    # (B, D)
+        Qb_norm2 = np.sum(Qb * Qb, axis=1)                             # (B,)
+        D2 = Qb_norm2[:, None] + X_norm2[None, :] - 2.0 * (Qb @ X.T)   # (B, N_train)
+        D2 = np.maximum(D2, 0.0)
+        part = np.argpartition(D2, kth=k_eff - 1, axis=1)[:, :k_eff]   # (B, k)  [unsorted]
+        row_idx = np.arange(D2.shape[0])[:, None]
+        chosen_D2 = D2[row_idx, part]
+        order_in_row = np.argsort(chosen_D2, axis=1)
+        topk_idx = part[row_idx, order_in_row]
+        topk_D2 = chosen_D2[row_idx, order_in_row]
+        nn_indices[s:e] = topk_idx
+        nn_dists[s:e] = np.sqrt(topk_D2)
+
+    return mis_val_idx_sorted, nn_indices.astype(int, copy=False), nn_dists.astype(float, copy=False)

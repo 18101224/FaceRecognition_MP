@@ -12,7 +12,7 @@ feature_names = ['backbone_feat', 'cls_feat', 'bcl_feat', 'center_feat']
 
 class Analysis:
     def __init__(self,args):
-        self.args = args
+        self.args = args     
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.datasets = load_dataset(self.args,dataset_path=self.args.dataset_path, dataset_name=self.args.dataset_name, imb_factor=self.args.imb_factor)
         self.loaders = load_loaders(self.datasets)
@@ -40,11 +40,20 @@ class Analysis:
         plot_label_distribution(self.datasets[0].labels, self.datasets[1].labels, self.save_path, model_name=getattr(self.args, 'model_name', None))
 
     def analyze_model_performance(self):
-        train_preds, train_labels, train_logits, train_features, train_features_branch, _ = get_predictions(self.model, self.loaders[0], self.aligner,get_features=True)
-        valid_preds, valid_labels, valid_logits, valid_features, valid_features_branch, centers_af_branch = get_predictions(self.model, self.loaders[1], self.aligner,get_features=True)
-        valid_preds_balanced, valid_labels_balanced, valid_confs_balanced, _, _, _ = get_predictions(self.model, self.loaders[2], self.aligner,get_features=True) if len(self.loaders) == 3 else (None, None, None, None, None, None)
+        train_preds, train_labels, train_logits, train_features, train_features_branch, _, training_indices= get_predictions(self.model, self.loaders[0], self.aligner,get_features=True)
+        valid_preds, valid_labels, valid_logits, valid_features, valid_features_branch, centers_af_branch, valid_indices = get_predictions(self.model, self.loaders[1], self.aligner,get_features=True)
+        valid_preds_balanced, valid_labels_balanced, valid_confs_balanced, _, _, _, _ = get_predictions(self.model, self.loaders[2], self.aligner,get_features=True) if len(self.loaders) == 3 else (None, None, None, None, None, None, None)
         centers_wo_branch = self.model.get_kernel().T.detach().cpu().numpy()
-        # wo branch version 
+        plot_dist(training_features=train_features, validation_features=valid_features, target_centers=centers_wo_branch,
+         training_logits=train_logits,validation_logits=valid_logits,training_labels=train_labels,validation_labels=valid_labels,save_path=f'{self.save_path}/dist.png', log_scale=True)
+
+        valid_prediction_indices, training_k_indices, training_k_dists = find_nearest_training_for_misclassified(training_features=train_features, validation_features=valid_features, target_centers=centers_wo_branch,  validation_logits=valid_logits, validation_labels=valid_labels,k=3)
+        valid_prediction_indices = valid_indices[valid_prediction_indices] # dataset index 
+        print(f'# mis classified samples : {valid_prediction_indices.shape[0]}')
+        training_k_indices = training_indices[training_k_indices]
+        for i in list(range(valid_indices.shape[0]//8))[:10]:
+            plot_val_train_neighbors_from_datasets(validation_indices=valid_prediction_indices[i*8:(i+1)*8], training_k_indices=training_k_indices[i*8:(i+1)*8], distances=training_k_dists[i*8:(i+1)*8], 
+            val_dataset=self.loaders[1].dataset , train_dataset=self.loaders[0].dataset , val_labels=valid_labels, train_labels=train_labels, save_path=f'{self.save_path}/val_train_neighbors_from_datasets_{i}.png',n=8)
         visualize_neural_collapse(X_tr=train_features, Z_tr=train_logits, y_tr=train_labels, X_va=valid_features, Z_va=valid_logits, y_va=valid_labels,
                  W=centers_wo_branch, savepath=f'{self.save_path}/wo_branch')
         print('wo_branch done')
@@ -148,10 +157,10 @@ class Compare:
         if len(self.loaders) == 3 :
             valid_preds_balanced, valid_labels_balanced, valid_confs_balanced = [], [], []
         for idx, model in enumerate(self.models) :
-            preds, labels, confs = get_predictions(model, self.loaders[0], self.aligner)
-            v_preds, v_labels, v_confs = get_predictions(model, self.loaders[1], self.aligner)
+            preds, labels, confs = list(get_predictions(model, self.loaders[0], self.aligner))[:3]
+            v_preds, v_labels, v_confs = list(get_predictions(model, self.loaders[1], self.aligner))[:3]
             if len(self.loaders) == 3 :
-                v_preds_balanced, v_labels_balanced, v_confs_balanced = get_predictions(model, self.loaders[2], self.aligner)
+                v_preds_balanced, v_labels_balanced, v_confs_balanced = list(get_predictions(model, self.loaders[2], self.aligner))[:3]
                 valid_preds_balanced.append(v_preds_balanced)
                 valid_labels_balanced.append(v_labels_balanced)
                 valid_confs_balanced.append(v_confs_balanced)
@@ -166,7 +175,7 @@ class Compare:
                 
         valid_accuracies = []
         valid_accuracies_balanced = []
-        for preds, labels in zip(valid_preds, valid_labels):
+        for preds, labels  in zip(valid_preds, valid_labels):
             valid_accuracies.append(compute_accuracy_per_class(preds=preds, labels=labels))
         if len(self.loaders) == 3 :
             for preds, labels in zip(valid_preds_balanced, valid_labels_balanced):
@@ -183,12 +192,12 @@ class Compare:
         normed_cms = []
         normed_cms_balanced = [] if len(self.loaders) == 3 else None
         for idx, model in enumerate(self.models):
-            v_preds, v_labels, _ = get_predictions(model, self.loaders[1], self.aligner)
+            v_preds, v_labels, _ = list(get_predictions(model, self.loaders[1], self.aligner))[:3]
             v_cm = compute_confusion_matrix(v_preds, v_labels)
             v_cm_norm = normalize_confusion_matrix(v_cm, v_labels)
             normed_cms.append(v_cm_norm)
             if len(self.loaders) == 3:
-                vb_preds, vb_labels, _ = get_predictions(model, self.loaders[2], self.aligner)
+                vb_preds, vb_labels, _ = list(get_predictions(model, self.loaders[2], self.aligner))[:3]
                 vb_cm = compute_confusion_matrix(vb_preds, vb_labels)
                 vb_cm_norm = normalize_confusion_matrix(vb_cm, vb_labels)
                 normed_cms_balanced.append(vb_cm_norm)

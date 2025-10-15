@@ -5,6 +5,7 @@ import seaborn as sns
 from collections import Counter 
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from typing import Optional, Sequence, Tuple, Callable
 from sklearn.preprocessing import StandardScaler
 
 def plot_label_distribution(train_labels, valid_labels, save_path, model_name=None):
@@ -1026,3 +1027,439 @@ def visualize_neural_collapse(
         "align": align,
         "figures": {"tsne": fig, "svd": fig_svd, "angles": fig_tbl}
     }
+
+ 
+def plot_dist(
+    training_features: np.ndarray,
+    validation_features: np.ndarray,
+    target_centers: np.ndarray,
+    training_logits: np.ndarray,
+    validation_logits: np.ndarray,
+    training_labels: np.ndarray,
+    validation_labels: np.ndarray,
+    class_names: Optional[Sequence[str]] = None,
+    save_path: Optional[str] = None,
+    dpi: int = 150,
+    angle_min: float = 0.0,
+    angle_max: float = 180.0,
+    bin_size: float = 5.0,
+    log_scale: bool = False,
+) -> Tuple[plt.Figure, np.ndarray]:
+    """
+    4행 × num_classes 열의 서브플롯:
+      1행: training center vs training features (hist)
+      2행: training center vs validation features (hist + bin별 오분류 비율 적색 누적)
+      3행: target center vs training features (hist)
+      4행: target center vs validation features (hist + bin별 오분류 비율 적색 누적)
+
+    입력:
+      - training_features: (N_train, D)
+      - validation_features: (N_val, D)
+      - target_centers: (C, D)
+      - training_logits: (N_train, C)
+      - validation_logits: (N_val, C)
+      - training_labels: (N_train,)
+      - validation_labels: (N_val,)
+      - class_names: 길이 C, 없으면 "Class {c}"
+      - save_path: 저장 경로 또는 None
+      - dpi: 저장/표시 DPI
+      - angle_min/angle_max/bin_size: 각도 구간(기본 0~180, 5도)
+      - log_scale: True면 y축 로그 스케일 적용 및 표시용 bin 최소값 1 보정
+
+    표시/계산:
+      - 각도 = arccos(cosine_similarity) [degree], L2 정규화 및 clip(-1,1)
+      - training center = 클래스별 training feature의 단위정규화 평균 재정규화
+      - validation 히스토그램은 bin별 오분류 비율을 적색으로 상단 누적
+      - y축: Train 행들은 train 최대 클래스 샘플 수, Val 행들은 val 최대 클래스 샘플 수로 통일
+      - log_scale=True: y축 하한 1 고정, 막대 높이(표시용)에 최소 1 적용(카운트가 0인 bin도 시각적으로 보이도록)
+    """
+    eps = 1e-12
+
+    def l2_normalize(x: np.ndarray, axis: int = -1) -> np.ndarray:
+        n = np.linalg.norm(x, axis=axis, keepdims=True)
+        n = np.maximum(n, eps)
+        return x / n
+
+    def compute_training_centers(feats: np.ndarray, labels: np.ndarray, num_classes: int) -> np.ndarray:
+        feats_n = l2_normalize(feats, axis=1)
+        C = num_classes
+        D = feats.shape[1]
+        centers = np.zeros((C, D), dtype=np.float32)
+        for c in range(C):
+            idx = np.where(labels == c)[0]
+            if idx.size == 0:
+                centers[c] = np.zeros(D, dtype=np.float32)
+            else:
+                m = feats_n[idx].mean(axis=0)
+                m = m / (np.linalg.norm(m) + eps)
+                centers[c] = m.astype(np.float32)
+        return centers
+
+    def angles_to_center(center_vec: np.ndarray, feats: np.ndarray) -> np.ndarray:
+        if np.linalg.norm(center_vec) < eps:
+            return np.empty((0,), dtype=np.float32)
+        feats_n = l2_normalize(feats, axis=1)
+        c = center_vec / (np.linalg.norm(center_vec) + eps)
+        cosv = feats_n @ c
+        cosv = np.clip(cosv, -1.0, 1.0)
+        ang = np.degrees(np.arccos(cosv)).astype(np.float32)
+        return ang
+
+    def hist_counts(angles: np.ndarray, bin_edges: np.ndarray) -> np.ndarray:
+        if angles.size == 0:
+            return np.zeros(len(bin_edges) - 1, dtype=np.int32)
+        return np.histogram(angles, bins=bin_edges)[0]
+
+    def misrate_per_bin(angles: np.ndarray, preds: np.ndarray, true_cls: int, bin_edges: np.ndarray) -> np.ndarray:
+        if angles.size == 0:
+            return np.zeros(len(bin_edges) - 1, dtype=np.float32)
+        bin_idx = np.digitize(angles, bin_edges) - 1
+        B = len(bin_edges) - 1
+        mis = np.zeros(B, dtype=np.int32)
+        tot = np.zeros(B, dtype=np.int32)
+        for i in range(angles.size):
+            b = bin_idx[i]
+            if b < 0 or b >= B:
+                continue
+            tot[b] += 1
+            if preds[i] != true_cls:
+                mis[b] += 1
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rate = np.where(tot > 0, mis / np.maximum(tot, 1), 0.0).astype(np.float32)
+        return rate
+
+    # 기본 준비
+    num_classes = target_centers.shape[0]
+    if class_names is None:
+        class_names = [f"Class {c}" for c in range(num_classes)]
+
+    # Okabe–Ito 색상
+    color_train = "#56B4E9"       # Row1
+    color_val_correct1 = "#0072B2" # Row2 Correct
+    color_train_tgt = "#CC79A7"    # Row3
+    color_val_correct2 = "#009E73" # Row4 Correct
+    color_err = "#D55E00"          # Misclassified overlay
+
+    # 센터/예측
+    target_centers_n = l2_normalize(target_centers, axis=1)
+    train_centers = compute_training_centers(training_features, training_labels, num_classes)
+    train_pred = np.argmax(training_logits, axis=1)
+    val_pred = np.argmax(validation_logits, axis=1)
+
+    # y축 공통 상한
+    train_counts_by_cls = np.bincount(training_labels, minlength=num_classes)
+    val_counts_by_cls = np.bincount(validation_labels, minlength=num_classes)
+    y_max_train = int(train_counts_by_cls.max()) if train_counts_by_cls.size > 0 else 1
+    y_max_val = int(val_counts_by_cls.max()) if val_counts_by_cls.size > 0 else 1
+    y_min = 1 if log_scale else 0
+
+    # 히스토그램 bin
+    bin_edges = np.arange(angle_min, angle_max + bin_size + 1e-6, bin_size, dtype=np.float32)
+    bin_width = bin_edges[1] - bin_edges[0]
+    bin_lefts = bin_edges[:-1]
+
+    # Figure
+    fig_h = 2.4 * 4
+    fig_w = 2.6 * max(3, num_classes)
+    fig, axes = plt.subplots(4, num_classes, figsize=(fig_w, fig_h), squeeze=False)
+
+    def apply_floor(arr: np.ndarray) -> np.ndarray:
+        return np.maximum(arr, 1) if log_scale else arr
+
+    for c in range(num_classes):
+        tr_idx = np.where(training_labels == c)[0]
+        va_idx = np.where(validation_labels == c)[0]
+
+        ctr_train = train_centers[c]
+        ctr_tgt = target_centers_n[c]
+
+        ang_tr_ctr_train = angles_to_center(ctr_train, training_features[tr_idx]) if tr_idx.size > 0 else np.array([])
+        ang_va_ctr_train = angles_to_center(ctr_train, validation_features[va_idx]) if va_idx.size > 0 else np.array([])
+        ang_tr_ctr_tgt = angles_to_center(ctr_tgt, training_features[tr_idx]) if tr_idx.size > 0 else np.array([])
+        ang_va_ctr_tgt = angles_to_center(ctr_tgt, validation_features[va_idx]) if va_idx.size > 0 else np.array([])
+
+        # Row 0: TrainCtr vs Train
+        ax = axes[0, c]
+        if ang_tr_ctr_train.size == 0:
+            ax.text(0.5, 0.5, "No samples", ha="center", va="center", fontsize=9, transform=ax.transAxes)
+        else:
+            cnt = hist_counts(ang_tr_ctr_train, bin_edges)
+            disp = apply_floor(cnt)
+            ax.bar(bin_lefts, disp, width=bin_width, align="edge",
+                   color=color_train, edgecolor="black", linewidth=0.3)
+        ax.set_title(f"{class_names[c]}\nTrainCtr vs Train", fontsize=9)
+        if c == 0:
+            ax.set_ylabel("Count", fontsize=9)
+        ax.set_xlim(angle_min, angle_max)
+        ax.set_xticks(np.linspace(angle_min, angle_max, 5))
+        if log_scale:
+            ax.set_yscale("log")
+            ax.set_ylim(y_min, max(y_max_train, y_min))
+        else:
+            ax.set_ylim(0, y_max_train)
+
+        # Row 1: TrainCtr vs Val (stacked with mis overlay)
+        ax = axes[1, c]
+        if ang_va_ctr_train.size == 0:
+            ax.text(0.5, 0.5, "No samples", ha="center", va="center", fontsize=9, transform=ax.transAxes)
+        else:
+            cnt = hist_counts(ang_va_ctr_train, bin_edges)
+            preds_c = val_pred[va_idx]
+            mr = misrate_per_bin(ang_va_ctr_train, preds_c, c, bin_edges)
+            good = np.round(cnt * (1.0 - mr)).astype(int)
+            bad = cnt - good
+            if log_scale:
+                total = good + bad
+                zeros = (total == 0)
+                good_disp = good.copy()
+                bad_disp = bad.copy()
+                good_disp[zeros] = 1
+                bad_disp[zeros] = 0
+            else:
+                good_disp = good
+                bad_disp = bad
+            ax.bar(bin_lefts, good_disp, width=bin_width, align="edge",
+                   color=color_val_correct1, edgecolor="black", linewidth=0.3, label="Correct")
+            ax.bar(bin_lefts, bad_disp, width=bin_width, align="edge", bottom=good_disp,
+                   color=color_err, edgecolor="black", linewidth=0.3, label="Misclassified")
+            if c == 0:
+                ax.legend(fontsize=8, frameon=False)
+        ax.set_title(f"{class_names[c]}\nTrainCtr vs Val", fontsize=9)
+        if c == 0:
+            ax.set_ylabel("Count", fontsize=9)
+        ax.set_xlim(angle_min, angle_max)
+        ax.set_xticks(np.linspace(angle_min, angle_max, 5))
+        if log_scale:
+            ax.set_yscale("log")
+            ax.set_ylim(y_min, max(y_max_val, y_min))
+        else:
+            ax.set_ylim(0, y_max_val)
+
+        # Row 2: TargetCtr vs Train
+        ax = axes[2, c]
+        if ang_tr_ctr_tgt.size == 0:
+            ax.text(0.5, 0.5, "No samples", ha="center", va="center", fontsize=9, transform=ax.transAxes)
+        else:
+            cnt = hist_counts(ang_tr_ctr_tgt, bin_edges)
+            disp = apply_floor(cnt)
+            ax.bar(bin_lefts, disp, width=bin_width, align="edge",
+                   color=color_train_tgt, edgecolor="black", linewidth=0.3)
+        ax.set_title(f"{class_names[c]}\nTargetCtr vs Train", fontsize=9)
+        if c == 0:
+            ax.set_ylabel("Count", fontsize=9)
+        ax.set_xlim(angle_min, angle_max)
+        ax.set_xticks(np.linspace(angle_min, angle_max, 5))
+        if log_scale:
+            ax.set_yscale("log")
+            ax.set_ylim(y_min, max(y_max_train, y_min))
+        else:
+            ax.set_ylim(0, y_max_train)
+
+        # Row 3: TargetCtr vs Val (stacked with mis overlay)
+        ax = axes[3, c]
+        if ang_va_ctr_tgt.size == 0:
+            ax.text(0.5, 0.5, "No samples", ha="center", va="center", fontsize=9, transform=ax.transAxes)
+        else:
+            cnt = hist_counts(ang_va_ctr_tgt, bin_edges)
+            preds_c = val_pred[va_idx]
+            mr = misrate_per_bin(ang_va_ctr_tgt, preds_c, c, bin_edges)
+            good = np.round(cnt * (1.0 - mr)).astype(int)
+            bad = cnt - good
+            if log_scale:
+                total = good + bad
+                zeros = (total == 0)
+                good_disp = good.copy()
+                bad_disp = bad.copy()
+                good_disp[zeros] = 1
+                bad_disp[zeros] = 0
+            else:
+                good_disp = good
+                bad_disp = bad
+            ax.bar(bin_lefts, good_disp, width=bin_width, align="edge",
+                   color=color_val_correct2, edgecolor="black", linewidth=0.3, label="Correct")
+            ax.bar(bin_lefts, bad_disp, width=bin_width, align="edge", bottom=good_disp,
+                   color=color_err, edgecolor="black", linewidth=0.3, label="Misclassified")
+            if c == 0:
+                ax.legend(fontsize=8, frameon=False)
+        ax.set_title(f"{class_names[c]}\nTargetCtr vs Val", fontsize=9)
+        if c == 0:
+            ax.set_ylabel("Count", fontsize=9)
+        ax.set_xlim(angle_min, angle_max)
+        ax.set_xticks(np.linspace(angle_min, angle_max, 5))
+        if log_scale:
+            ax.set_yscale("log")
+            ax.set_ylim(y_min, max(y_max_val, y_min))
+        else:
+            ax.set_ylim(0, y_max_val)
+
+    for c in range(num_classes):
+        axes[3, c].set_xlabel("Angle (degrees)", fontsize=9)
+
+    plt.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+    return fig, axes
+
+def plot_val_train_neighbors_from_datasets(
+    validation_indices: np.ndarray,          # (M,)
+    training_k_indices: np.ndarray,          # (M, k)
+    distances: Optional[np.ndarray],         # (M, k) or None
+    val_dataset,                              # torch.utils.data.Dataset 호환
+    train_dataset,                            # torch.utils.data.Dataset 호환
+    val_labels: np.ndarray,                  # (N_val,)
+    train_labels: np.ndarray,                # (N_train,)
+    class_names: Optional[Sequence[str]] = None,
+    n: int = 8,
+    random_state: Optional[int] = 0,
+    save_path: Optional[str] = None,
+    dpi: int = 150,
+    figsize_per_cell: Tuple[float, float] = (2.2, 2.2),
+    linewidth: float = 2.0,
+    denorm_fn: Optional[Callable] = None,    # Optional[tensor -> tensor] 역정규화 훅
+):
+    """
+    무작위로 n개(validation_indices에서) 행을 선택하여 (n, 1+k) 그리드로
+    [Validation | Top-1..k Training Neighbors] 이미지를 시각화한다.
+
+    - validation_indices: (M,) 오분류된 validation 인덱스
+    - training_k_indices: (M, k) 각 validation 샘플의 top-k training 인덱스
+    - distances: (M, k) 유클리드 거리(옵션), None 가능
+    - val_dataset / train_dataset: __getitem__(idx)-> (image, ...)/dict/array 등 반환하는 PyTorch Dataset
+    - val_labels / train_labels: 정수 클래스 라벨
+    - class_names: 라벨 문자열 매핑(옵션), 없으면 "c{y}" 사용
+    - n: 뽑을 행 수(최대 M)
+    - random_state: 재현성용 시드
+    - save_path: 저장 경로(옵션)
+    - dpi, figsize_per_cell, linewidth: 렌더링 파라미터
+    - denorm_fn: 텐서 시각화 전에 적용할 역정규화 함수(예: Imagenet 역정규화)
+
+    반환:
+    - fig, axes, chosen_rows_idx(원본 M 중 선택된 행 인덱스)
+    """
+
+    try:
+        import torch  # type: ignore
+        has_torch = True
+    except Exception:
+        torch = None
+        has_torch = False
+
+    def first_image_from_item(item):
+        # tuple/list: 첫 요소, dict: 우선순위 키 탐색 후 첫 값, 그 외는 그대로
+        if isinstance(item, (tuple, list)) and len(item) > 0:
+            return item[0]
+        if isinstance(item, dict) and len(item) > 0:
+            for key in ("image", "img", "pixel_values", "pixels", "input", "inputs"):
+                if key in item:
+                    return item[key]
+            return next(iter(item.values()))
+        return item
+
+    def to_numpy_image(img):
+        # Tensor -> NumPy (CHW->HWC), PIL -> NumPy, NumPy -> 그대로
+        if has_torch and isinstance(img, torch.Tensor):
+            x = img.detach().cpu()
+            if denorm_fn is not None:
+                x = denorm_fn(x)
+            if x.ndim == 3 and x.shape[0] in (1, 3, 4):
+                x = x.permute(1, 2, 0)  # CHW -> HWC
+            x = x.numpy()
+        else:
+            try:
+                from PIL import Image  # type: ignore
+                if isinstance(img, Image.Image):
+                    # Pillow 이미지는 imshow에서 바로 사용 가능
+                    x = np.asarray(img)
+                else:
+                    x = np.asarray(img)
+            except Exception:
+                x = np.asarray(img)
+
+        # 채널/범위 정리
+        if x.ndim == 3 and x.shape[2] == 1:
+            x = x.squeeze(-1)
+        if np.issubdtype(x.dtype, np.floating):
+            x_min, x_max = np.nanmin(x), np.nanmax(x)
+            if x_max <= 1.0 and x_min >= 0.0:
+                pass  # [0,1]
+            elif x_max <= 1.0 and x_min >= -1.0:
+                x = (x + 1.0) / 2.0  # [-1,1] -> [0,1]
+            else:
+                # 일반 범위 -> [0,1]
+                denom = (x_max - x_min) if (x_max > x_min) else 1.0
+                x = (x - x_min) / denom
+        return x
+
+    def get_image(dataset, idx: int):
+        item, _, _ = dataset[idx]
+        return to_numpy_image(item)
+
+    M = int(validation_indices.shape[0])
+    if M == 0:
+        raise ValueError("validation_indices가 비어 있습니다.")
+
+    k = int(training_k_indices.shape[1])
+    if distances is not None and distances.shape != training_k_indices.shape:
+        raise ValueError("distances의 shape이 training_k_indices와 일치해야 합니다.")
+
+    rng = np.random.default_rng(random_state)
+    n_eff = int(min(max(n, 1), M))
+    chosen = rng.choice(M, size=n_eff, replace=False)
+
+    sel_val_idx = validation_indices[chosen]
+    sel_train_topk = training_k_indices[chosen]
+    sel_dist = distances[chosen] if distances is not None else None
+
+    def name_of(lbl: int) -> str:
+        if class_names is None:
+            return f"c{int(lbl)}"
+        if 0 <= int(lbl) < len(class_names):
+            return str(class_names[int(lbl)])
+        return f"c{int(lbl)}"
+
+    fig_w = figsize_per_cell[0] * (1 + k)
+    fig_h = figsize_per_cell[1] * n_eff
+    fig, axes = plt.subplots(n_eff, 1 + k, figsize=(fig_w, fig_h), squeeze=False)
+
+    def show_img(ax, img):
+        ax.imshow(img)
+        ax.set_axis_off()
+
+    def set_border(ax, color: str):
+        for sp in ax.spines.values():
+            sp.set_edgecolor(color)
+            sp.set_linewidth(linewidth)
+
+    color_match = "#0072B2"    # 파랑(일치)
+    color_mismatch = "#D55E00" # 빨강(불일치)
+
+    for r in range(n_eff):
+        v_idx = int(sel_val_idx[r])
+        v_lbl = int(val_labels[v_idx])
+
+        # Validation 이미지
+        ax = axes[r, 0]
+        v_img = get_image(val_dataset, v_idx)
+        show_img(ax, v_img)
+        set_border(ax, "#000000")
+        ax.set_title(f"Val[{v_idx}] {name_of(v_lbl)}", fontsize=9)
+
+        # k개의 Training 이웃
+        for j in range(k):
+            t_idx = int(sel_train_topk[r, j])
+            t_lbl = int(train_labels[t_idx])
+            ax = axes[r, 1 + j]
+            t_img = get_image(train_dataset, t_idx)
+            show_img(ax, t_img)
+            set_border(ax, color_match if t_lbl == v_lbl else color_mismatch)
+            if sel_dist is not None:
+                ax.set_title(f"Tr[{t_idx}] {name_of(t_lbl)}\n d={sel_dist[r, j]:.3f}", fontsize=8)
+            else:
+                ax.set_title(f"Tr[{t_idx}] {name_of(t_lbl)}", fontsize=8)
+
+    plt.tight_layout()
+    if save_path.endswith('.png') or save_path.endswith('.jpeg') or save_path.endswith('.jpg'):
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+    else:
+        fig.savefig(os.path.join(save_path, 'val_train_neighbors_from_datasets.png'))
+    return fig, axes, chosen
