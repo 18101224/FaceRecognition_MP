@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -J hcir_fer
 #SBATCH -A m1248_g 
-#SBATCH -q regular
+#SBATCH -q shared
 #SBATCH -N 1
 #SBATCH -t 24:00:00
-#SBATCH --gpus-per-node=4
-#SBATCH --ntasks-per-node=4
+#SBATCH --gpus-per-node=1
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
@@ -25,13 +25,9 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
 
-
-for i in 0 1 2 3; do
-CUDA_VISIBLE_DEVICES=$i python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
---learning_rate=1e-6 --batch_size=256 --n_epochs=30 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
+python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
+--learning_rate=1e-6 --batch_size=144 --n_epochs=30 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=AffectNet --dataset_path=../data/AffectNet7 --num_classes=7 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m --feature_branch=True --use_bn=True \
---loss=KBCL --kcl_k=10 --beta=0.3 --temperature=0.1 --moco_k=1024 --utilize_target_centers=True &
-done
-
+--loss=EKCL --num_clusters 80 200 --sizes_clusters 3 5 --balanced_cl=True --batch_pairs_only=True --utilize_target_centers=True 
 wait 

@@ -1,3 +1,4 @@
+from tkinter import Y
 import torch 
 from torch.nn import functional as F
 import math
@@ -43,12 +44,7 @@ class EKCL(torch.nn.Module) :
         _, feature, _ = model(imgs, keypoint=kp, features=True)
         return feature.reshape(bs,k,-1)
 
-    def make_sampled_centers(self, X, y, n:int):
-        '''
-        X : bs, dim 
-        y : bs 
-        n : int
-        '''
+
 
     def compute_sims(self, q, k, y, ):
         '''
@@ -109,17 +105,17 @@ class EKCL(torch.nn.Module) :
 
         return loss.mean()
 
-    def gen_clusters(self,X,y,n,k):
+    def gen_clusters(self,X,y,n:list,k:list):
         clusters = []
         labels = []
         for i in range(len(self.args.num_clusters)):
-            indices, valid_mask, repeated_mask = build_unique_cluster_indices(y, n=n,k=k, num_classes=self.args.num_clusters[i])
+            indices, valid_mask, repeated_mask = build_unique_cluster_indices(y, n=n[i],k=k[i], num_classes=self.args.num_classes)
             indices = indices[valid_mask] # n_c, k, n ( only valid classes ) 
             cluster_embeddings = X[indices] # shaped as (num_classes, k, n, dim)
             cluster_means = spherical_frechet_mean_groups(cluster_embeddings, max_iters=20, tol=1e-6, step=1.0, eps=1e-7) # shaped as (num_classes, k, dim)
-            labels = torch.arange(self.args.num_classes,device=X.device).unsqueeze(1).expand(-1,k)[valid_mask].reshape(-1) # n_c*k
-            clusters.append(cluster_means)
-            labels.append(labels)
+            temp_y = torch.arange(self.args.num_classes,device=X.device).unsqueeze(1).expand(-1,k[i])[valid_mask].reshape(-1) # n_c*k
+            clusters.append(cluster_means.reshape(-1,cluster_means.shape[-1]))
+            labels.append(temp_y)
         clusters = torch.cat(clusters, dim=0) if len(clusters) > 1 else clusters[0]
         labels = torch.cat(labels, dim=0) if len(labels) > 1 else labels[0]
         return clusters, labels
@@ -152,8 +148,8 @@ class EKCL(torch.nn.Module) :
         if self.args.batch_pairs_only : 
             clusters, labels = self.gen_clusters(features, y, self.args.sizes_clusters, self.args.num_clusters)
             if weight is not None : 
+                y = torch.cat([labels, torch.arange(weight.shape[0], device=y.device)],dim=0)
                 features = torch.cat([clusters, weight], dim=0)
-                y = torch.cat([labels, torch.arange(weight.shape[0])],dim=0)
                 cl_loss = self.compute_self_sims(features, y)
             else:
                 cl_loss = self.compute_self_sims(clusters, labels)

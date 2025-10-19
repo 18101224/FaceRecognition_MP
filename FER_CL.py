@@ -79,9 +79,9 @@ def get_loaders(args):
         valid_sampler = None
         train_sampler_wo_aug = None
         balanced_sampler = None
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=args.num_workers, pin_memory=True, shuffle=train_sampler is None)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=args.num_workers, pin_memory=True, shuffle=train_sampler is None, drop_last=True)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, sampler=valid_sampler, num_workers=args.num_workers, pin_memory=True)
-    train_loader_wo_aug = DataLoader(train_dataset_wo_aug, batch_size=args.batch_size, sampler=train_sampler_wo_aug, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    train_loader_wo_aug = DataLoader(train_dataset_wo_aug, batch_size=args.batch_size, sampler=train_sampler_wo_aug, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     balanced_loader = DataLoader(balanced_dataset, batch_size=args.batch_size, sampler=balanced_sampler, shuffle=False, num_workers=args.num_workers, pin_memory=True) if args.dataset_name == 'RAF-DB' else None 
     return train_loader, valid_loader, train_loader_wo_aug, balanced_loader
 
