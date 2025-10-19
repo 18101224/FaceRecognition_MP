@@ -240,32 +240,31 @@ def get_clothing1m_transforms(train):
 def get_fer_transforms(train,model_type):
     mean=[0.485, 0.456, 0.406] if 'kprpe' not in model_type else [0.5] * 3
     std=[0.229, 0.224, 0.225] if 'kprpe' not in model_type else [0.5] * 3
-    
     if train :
-        return transforms.Compose([
-            transforms.Resize((112, 112)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-            transforms.RandomRotation(15),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=mean, std=std)
-        ])
-        # pipeline = [
+        # return transforms.Compose([
         #     transforms.Resize((112, 112)),
-        #     transforms.RandomHorizontalFlip(p=0.5),
-        #     transforms.RandomApply([
-        #         transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.1, hue=0.05)
-        #     ], p=0.2),                  # 밝기·대비·채도 너무 강하지 않게, 실무 validation 권고 적용
-        #     transforms.RandomRotation(10, fill=(0,0,0)),  # 약한 회전
-        #     transforms.RandomApply([
-        #         transforms.GaussianBlur(kernel_size=3)
-        #     ], p=0.1),
+        #     transforms.RandomHorizontalFlip(),
+        #     transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+        #     transforms.RandomRotation(15),
         #     transforms.ToTensor(),
         #     transforms.Normalize(mean=mean, std=std)
-        # ]
+        # ])
+        pipeline = [
+            transforms.Resize((112, 112)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomApply([
+                transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.1, hue=0.05)
+            ], p=0.2),                  # 밝기·대비·채도 너무 강하지 않게, 실무 validation 권고 적용
+            transforms.RandomRotation(10, fill=(0,0,0)),  # 약한 회전
+            transforms.RandomApply([
+                transforms.GaussianBlur(kernel_size=3)
+            ], p=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std)
+        ]
         # 필요 시 CutOut/Erase/Crop 증강 더 추가 가능 (landmark ROI 안전 검사 필요)
         # 예) custom cutout(눈·입 방어)는 albumentations나 직접 커스텀 함수로 구현
-        #return transforms.Compose(pipeline)
+        return transforms.Compose(pipeline)
     else : 
         return transforms.Compose([
             transforms.Resize((112, 112)),
