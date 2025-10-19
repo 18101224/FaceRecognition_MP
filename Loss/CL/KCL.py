@@ -81,6 +81,7 @@ class KCL(nn.Module):
         query, key , label 
         '''
         N,K,D = k.shape 
+
         k_sims = (q.unsqueeze(1) @ k.transpose(-1,-2)).squeeze(1) / self.tau  # N, k 
 
         batch_sims = q@q.T / self.tau # N, N 
@@ -94,7 +95,7 @@ class KCL(nn.Module):
         batch_pos_sims = batch_sims * same_class_mask
         batch_pos_sims = batch_pos_sims.masked_fill(batch_pos_sims == 0, float('-inf'))  # N, N 
 
-        pos_sims = torch.cat([k_sims, batch_pos_sims],dim=1 )
+        pos_sims = torch.cat([k_sims, batch_pos_sims],dim=1 ) # N,k+N 
         y_counts = y.bincount().to(q.device) # C 
         neg_sims = batch_sims*neg_batches # N,N * N,N -> N,N 
         neg_sims = neg_sims.masked_fill(neg_sims == 0, float('-inf'))  # N, N 
@@ -102,7 +103,7 @@ class KCL(nn.Module):
         num = torch.logsumexp(pos_sims, dim=1) # N 
         den = torch.log(torch.sum(torch.exp(neg_sims) / y_counts[y].reshape(1,-1),dim=1).reshape(N,))
 
-        loss = -(num - den) / same_class_counts 
+        loss = -(num - den) / same_class_counts
 
         return loss.mean()
 

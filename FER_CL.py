@@ -145,21 +145,21 @@ def get_args():
     # CL args
     args.add_argument('--loss', type=str, default='CE', help='first argument CE KBCL KCL second option ETF ex KCL_ETF')
     args.add_argument('--kcl_k', type=int, default=5)
-    args.add_argument('--include_positives_in_denominator', default=False)
-    args.add_argument('--exclude_same_class_from_negatives', default=False)
-    args.add_argument('--use_batch_negatives', default=False)
-    args.add_argument('--except_sam', default=False)
-    args.add_argument('--k_meeting_dist', default=False, type=float)
+
+
+
+    args.add_argument('--num_clusters', nargs='+', type=int,)
+    args.add_argument('--sizes_clusters', nargs='+', type=int,)
+    args.add_argument('--batch_pairs_only', default=False)
+
 
     args.add_argument('--beta', type=float, default=0.3)
 
     args.add_argument('--temperature', type=float, default=0.1)
-
     args.add_argument('--moco_k', type=int, default=2)
-    args.add_argument('--k_meeting', type=str, default=None)
 
-    args.add_argument('--k_grad', default=False)
-    args.add_argument('--balanced_cl', default=False)
+
+
     args.add_argument('--utilize_class_centers', default=False)
     args.add_argument('--utilize_target_centers', default=False)
     
@@ -170,7 +170,12 @@ def get_args():
     # logging args 
     args.add_argument('--measure_grad', default=False)
     args.add_argument('--debug', default=False)
+    args.add_argument('--except_sam', default=False)
 
+    args.add_argument('--k_grad', default=False)
+    args.add_argument('--balanced_cl', default=False)
+    args.add_argument('--k_meeting', type=str, default=None)
+    args.add_argument('--k_meeting_dist', default=False, type=float)
 
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
