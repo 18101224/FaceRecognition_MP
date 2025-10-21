@@ -86,7 +86,10 @@ def get_loaders(args):
     return train_loader, valid_loader, train_loader_wo_aug, balanced_loader
 
 def get_optimizer(args, model):
-    opt = SAM(model.parameters(),base_optimizer=torch.optim.AdamW,lr=args.learning_rate,weight_decay=args.weight_decay)
+    if args.optimizer == 'SAM': 
+        opt = SAM(model.parameters(),base_optimizer=torch.optim.AdamW,lr=args.learning_rate,weight_decay=args.weight_decay)
+    else:
+        opt = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = ExponentialLR(opt,gamma=0.98) if args.scheduler=='exp' else CosineAnnealingLR(opt,T_max=args.n_epochs,eta_min=args.learning_rate/100)
     if args.resume_path is not None:
         ckpt = torch.load(os.path.join(args.resume_path, 'latest.pth'), map_location=torch.device('cpu'),weights_only=False)
@@ -171,6 +174,7 @@ def get_args():
     args.add_argument('--measure_grad', default=False)
     args.add_argument('--debug', default=False)
     args.add_argument('--except_sam', default=False)
+    args.add_argument('--mixup', default=False )
 
     args.add_argument('--k_grad', default=False)
     args.add_argument('--balanced_cl', default=False)
@@ -204,8 +208,8 @@ class Trainer:
         self.init_weight() if (not args.loss == 'CE' or args.resume_path is not None) else None 
         self.opt, self.scheduler = get_optimizer(args, self.model)
         self.init_logs()
-        self.cl_loss = get_cl_loss(args, deepcopy(self.model if self.args.world_size==1 else self.model.module)
-        , init_queue=get_queue(args, self.model, self.train_loader_wo_aug,aligner=self.aligner) if not include(self.args.loss, ['KCL', 'KBCL']) else None) 
+        self.cl_loss = get_cl_loss(args, deepcopy(self.model if self.args.world_size==1 else self.model.module,)
+        , init_queue=get_queue(args, self.model, self.train_loader_wo_aug,aligner=self.aligner) if not include(self.args.loss, ['KCL', 'KBCL']) else None,  class_counts=torch.tensor(self.train_loader.dataset.get_img_num_per_cls(), device=torch.device('cuda'))) 
     
     def init_logs(self):
         if self.args.resume_path is not None:
@@ -309,20 +313,26 @@ class Trainer:
         for img,label in tqdm(self.train_loader, disable=self.args.world_size > 1 and self.args.rank != 0, 
          desc=f"training epoch {self.epoch} latest_acc: {(self.log['valid_acc'][-1] if len(self.log['valid_acc']) > 0 else 0):.4f} best_acc: {self.best_acc:.4f}"):
             self.model.zero_grad()
+            self.opt.zero_grad() if self.args.loss !='SAM' else None 
             if isinstance(img, list) : 
                 img = torch.concat(img, dim=0)
             img, label = img.cuda(), label.cuda() # the images are list with number-of-views 
             ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
+
             logit, loss, k = self.run_train_forward(img, label, ldmk, k=None, loss_for_log=loss_for_log, ce_only=self.args.except_sam)
             loss.backward()
+
             if self.args.measure_grad : 
                 temp_grad = measure_grad(self.model, 0, 0, temp_grad, layer_names=['backbone'])
-            self.opt.first_step(zero_grad=True)
+            self.opt.first_step(zero_grad=True) if self.args.optimizer == 'SAM' else self.opt.step() 
+
             with torch.no_grad():
                 total_acc += get_acc(logit,label)*label.shape[0]
-            _, loss, _ = self.run_train_forward(img,label,ldmk, k=k, loss_for_log=None)
-            loss.backward()
-            self.opt.second_step(zero_grad=True)
+            
+            if self.args.optimizer=='SAM':
+                _, loss, _ = self.run_train_forward(img,label,ldmk, k=k, loss_for_log=None)
+                loss.backward()
+                self.opt.second_step(zero_grad=True)
 
             if include(self.args.loss, ['KCL', 'KBCL']):
                 self.cl_loss.momentum_update(self.model if self.args.world_size==1 else self.model.module)
@@ -412,6 +422,7 @@ class Trainer:
             self.log[key].append(value)
         self.log['valid_acc'].append(valid_acc)
         self.log['valid_loss'].append(valid_loss)
+        self.save(valid_acc, valid_macro_acc)
         if self.args.world_size == 1 or self.args.rank == 0 :
             wandb.log({
             'train_acc': train_acc,
@@ -427,7 +438,7 @@ class Trainer:
             })
             # save angle matrix image each epoch
             self.save_angle_mat(self.epoch)
-        self.save(valid_acc, valid_macro_acc)
+        
 
 
     def train(self):

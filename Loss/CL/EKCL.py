@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 __all__ = ['EKCL']
 
 class EKCL(torch.nn.Module) : 
-    def __init__(self, args, fetcher, temperature=0.1,):
+    def __init__(self, args, fetcher, temperature=0.1, class_counts=None):
         super().__init__()
         '''
         args should have num_workers
@@ -19,7 +19,12 @@ class EKCL(torch.nn.Module) :
         self.args = args
         if self.args.k_meeting is not None : 
             self.qk, self.kk = list(map(int,list(self.args.k_meeting.split('_'))))
-            
+        if self.args.mixup : 
+            self.class_counts = class_counts
+        else:
+            self.class_counts = None
+        
+        self.count = 0
 
     def fetch_positive(self,y,k):
         '''
@@ -105,20 +110,28 @@ class EKCL(torch.nn.Module) :
 
         return loss.mean()
 
-    def gen_clusters(self,X,y,n:list,k:list):
+    def gen_clusters(self,X,y,n:list,k:list, legacy_indices=None, legacy_labels=None):
         clusters = []
         labels = []
+        indices_to_return = []
+        labels_to_return = []
         for i in range(len(self.args.num_clusters)):
-            indices, valid_mask, repeated_mask = build_unique_cluster_indices(y, n=n[i],k=k[i], num_classes=self.args.num_classes)
-            indices = indices[valid_mask] # n_c, k, n ( only valid classes ) 
+            if legacy_indices is None : 
+                indices, valid_mask, repeated_mask = build_unique_cluster_indices(y, n=n[i],k=k[i], num_classes=self.args.num_classes)
+                indices = indices[valid_mask] # n_c, k, n ( only valid classes ) 
+            else: 
+                indices = legacy_indices[i]
             cluster_embeddings = X[indices] # shaped as (num_classes, k, n, dim)
             cluster_means = spherical_frechet_mean_groups(cluster_embeddings, max_iters=20, tol=1e-6, step=1.0, eps=1e-7) # shaped as (num_classes, k, dim)
-            temp_y = torch.arange(self.args.num_classes,device=X.device).unsqueeze(1).expand(-1,k[i])[valid_mask].reshape(-1) # n_c*k
+            temp_y = torch.arange(self.args.num_classes,device=X.device).unsqueeze(1).expand(-1,k[i])[valid_mask].reshape(-1) if legacy_labels is None else \
+                legacy_labels[i]
             clusters.append(cluster_means.reshape(-1,cluster_means.shape[-1]))
             labels.append(temp_y)
+            indices_to_return.append(indices)
+            labels_to_return.append(temp_y)
         clusters = torch.cat(clusters, dim=0) if len(clusters) > 1 else clusters[0]
         labels = torch.cat(labels, dim=0) if len(labels) > 1 else labels[0]
-        return clusters, labels
+        return clusters, labels, indices_to_return, labels_to_return  # num_cluster_samples, dim , num_cluster_samples
 
     def compute_self_sims(self,features, labels):
         '''
@@ -140,20 +153,56 @@ class EKCL(torch.nn.Module) :
         loss = -(num-den) / norm_factor.reshape(-1,1)
         return loss.mean()
 
+    def compute_geometrical_mixup(self, features, labels_a, b_indices, labels_b, weights, lam=None):
+
+        features_b = features[b_indices]
+        lam = sample_beta(labels_a, labels_b, self.class_counts,) if lam is None else lam 
+        features_m = slerp(features, features_b, lam)
+        target_center = slerp(weights[labels_a], weights[labels_b], lam)
+        y = F.one_hot(labels_a,num_classes=self.args.num_classes) + F.one_hot(labels_b,num_classes=self.args.num_classes) 
+        mask = torch.zeros_like(y, dtype=torch.float32, device=features.device)
+        mask[torch.arange(lam.shape[0]), labels_a] = float('-inf')
+        mask[torch.arange(lam.shape[0]), labels_b] = float('-inf') 
+
+        positive_sim = features_m * target_center # bs, dim 
+
+        negative_sim = (features_m.unsqueeze(1) @ weights.unsqueeze(0).repeat(features_m.shape[0],1,1).transpose(-1,-2) ).squeeze(1) + mask
+
+        num = torch.logsumexp(positive_sim, dim=-1)
+
+        den = torch.log(torch.sum(torch.exp(negative_sim), dim=-1))
+
+        loss = -(num-den)
+
+
+
+        return loss.mean(), lam 
+
 
     def forward(self, logits, features, y, weight, centers ,model, aligner=None, requires_grad=False, positive_pair=None, **kwargs):
+
 
         ce_loss =torch.nn.functional.cross_entropy(logits, y)
 
         if self.args.batch_pairs_only : 
-            clusters, labels = self.gen_clusters(features, y, self.args.sizes_clusters, self.args.num_clusters)
+            clusters, labels, indices_for_second , labels_for_second = self.gen_clusters(features, y, self.args.sizes_clusters, self.args.num_clusters,
+             legacy_indices=positive_pair['cluster_indices'] if positive_pair is not None else None , legacy_labels=positive_pair['cluster_labels'] if positive_pair is not None else None )
+            if self.args.mixup : 
+                indices, label_keys = pick_similar_pairs_flat(clusters, labels) if positive_pair is None else (positive_pair['pair_indices'], positive_pair['key_labels'])
+                cl_loss, lam = self.compute_geometrical_mixup(clusters, labels_a=labels, b_indices=indices, labels_b=label_keys,
+                 weights=weight, lam=(None if positive_pair is None else positive_pair['lam']) )
+                
+
+                return ce_loss, cl_loss, {'pair_indices':indices, 'key_labels': label_keys, 'lam':lam, 'cluster_labels':labels_for_second, 'cluster_indices':indices_for_second}
             if weight is not None : 
                 y = torch.cat([labels, torch.arange(weight.shape[0], device=y.device)],dim=0)
                 features = torch.cat([clusters, weight], dim=0)
                 cl_loss = self.compute_self_sims(features, y)
             else:
                 cl_loss = self.compute_self_sims(clusters, labels)
-            return ce_loss, cl_loss, None 
+
+
+            return ce_loss, cl_loss, {'cluster_indices':indices_for_second, 'cluster_labels':labels_for_second}
             
         else:
             if positive_pair is None :
@@ -201,6 +250,49 @@ class EKCL(torch.nn.Module) :
         query_means = spherical_frechet_mean(torch.cat([features.unsqueeze(1),query_features], dim=1))
         query_dist = calc_cluster_distance(query_features, query_means)
         return query_means, key_means, query_dist, key_dist
+
+
+
+def slerp(a, b, lam):
+    """
+    Perform spherical linear interpolation between two sets of points on a sphere.
+
+    Parameters:
+    a (torch.Tensor): Starting points, shape (n, dim).
+    b (torch.Tensor): Ending points, shape (n, dim).
+    lam (float): Interpolation coefficient, scalar.
+
+    Returns:
+    torch.Tensor: Interpolated points, shape (n, dim).
+    """
+    # Dot product to get cosine of the angle, clamp to avoid numerical issues
+    dot_product = torch.clamp(torch.sum(a * b, dim=-1, keepdim=True), -1.0, 1.0)
+    
+    # Calculate the angle between the vectors
+    theta = torch.acos(dot_product)
+    
+    # slerp calculation
+    sin_theta = torch.sin(theta)
+    sin_theta = torch.where(sin_theta == 0, torch.full_like(sin_theta, 1e-7), sin_theta)  # Prevent division by zero
+
+    lam = lam.unsqueeze(-1)
+    slerp_result = (torch.sin((1 - lam) * theta) / sin_theta) * a + (torch.sin(lam * theta) / sin_theta) * b
+    
+    return slerp_result
+
+
+def sample_beta( a,b,class_counts, alpha_base=0.4, max_alpha=2., min_alpha=0.1,):
+    freq_a = class_counts[a]
+    freq_b = class_counts[b]
+
+    total = freq_a + freq_b
+    rate_a = total / (2*freq_a)
+    rate_b = total / (2*freq_b)
+    alpha_a = torch.clamp(alpha_base*rate_a, min_alpha, max_alpha)
+    alpha_b = torch.clamp(alpha_base*rate_b, min_alpha, max_alpha)
+    beta = torch.distributions.beta.Beta(alpha_a, alpha_b)
+    lam = beta.sample()
+    return lam.to(a.device)
 
 
 def calc_cluster_distance(features, means):
@@ -319,6 +411,38 @@ def spherical_frechet_mean_groups(
 
     mu = mu.reshape(NC, K, D)  # (NC, k, dim)
     return mu
+
+
+@torch.no_grad()
+def pick_similar_pairs_flat(features, labels):
+    """
+    features: (N, dim) normalized tensor
+    labels: (N,) int tensor
+    Returns:
+        indices: (N,) int tensor, index of most similar sample from different class for each sample
+        label_keys: (N,) int tensor, label of that sample
+    """
+    N, dim = features.shape
+
+    # 모든 pair의 cosine similarity (dot product, N x N)
+    sims = features @ features.T  # (N, N)
+
+    # 내 클래스 제외 마스크 (N x N)
+    labels_row = labels.unsqueeze(1)
+    labels_col = labels.unsqueeze(0)
+    mask = (labels_row != labels_col)  # True: 다른 클래스
+
+    # 가장 높은 similarity를 클래스가 다른 샘플에서만 추출
+    sims_masked = sims.clone()
+    sims_masked[~mask] = float('-inf')  # 자신의 클래스 제외
+
+    # 각 샘플별 argmax (최고 similarity index, 다른 클래스 중)
+    indices = torch.argmax(sims_masked, dim=1)  # (N,)
+
+    # 해당 샘플의 label
+    label_keys = labels[indices]
+
+    return indices, label_keys
 
 
 @torch.no_grad()

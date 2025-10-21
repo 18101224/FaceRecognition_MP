@@ -34,12 +34,12 @@ def include(loss, losses):
                 return True 
     return False
 
-def get_cl_loss(args, model=None, init_queue=None):
+def get_cl_loss(args, model=None, init_queue=None, class_counts=None):
     if include(args.loss, ['CE']) : 
         return CE()
     elif include(args.loss, ['EKCL']) :
         return EKCL(args, fetcher =  ClassBatchSampler(args, transform=get_fer_transforms(train=True, model_type=args.model_type),idx=False,num_workers=args.num_workers)
-        , temperature=args.temperature)
+        , temperature=args.temperature, class_counts=class_counts)
     elif include(args.loss, ['KBCL']) :
         return KCL(args, model, dim=args.dim, temperature=args.temperature, init_queue=init_queue)
     elif include(args.loss, ['BCL']) :
