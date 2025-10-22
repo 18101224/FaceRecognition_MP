@@ -189,20 +189,20 @@ class EKCL(torch.nn.Module) :
              legacy_indices=positive_pair['cluster_indices'] if positive_pair is not None else None , legacy_labels=positive_pair['cluster_labels'] if positive_pair is not None else None )
             if self.args.mixup : 
                 indices, label_keys = pick_similar_pairs_flat(clusters, labels) if positive_pair is None else (positive_pair['pair_indices'], positive_pair['key_labels'])
-                cl_loss, lam = self.compute_geometrical_mixup(clusters, labels_a=labels, b_indices=indices, labels_b=label_keys,
+                mx_cl_loss, lam = self.compute_geometrical_mixup(clusters, labels_a=labels, b_indices=indices, labels_b=label_keys,
                  weights=weight, lam=(None if positive_pair is None else positive_pair['lam']) )
-                
-
-                return ce_loss, cl_loss, {'pair_indices':indices, 'key_labels': label_keys, 'lam':lam, 'cluster_labels':labels_for_second, 'cluster_indices':indices_for_second}
+                to_return = {'pair_indices':indices, 'key_labels': label_keys, 'lam':lam, }
+                if not self.args.gamma :
+                    return ce_loss, mx_cl_loss, {**to_return,'cluster_labels':labels_for_second, 'cluster_indices':indices_for_second}
             if weight is not None : 
                 y = torch.cat([labels, torch.arange(weight.shape[0], device=y.device)],dim=0)
                 features = torch.cat([clusters, weight], dim=0)
                 cl_loss = self.compute_self_sims(features, y)
             else:
                 cl_loss = self.compute_self_sims(clusters, labels)
-
-
-            return ce_loss, cl_loss, {'cluster_indices':indices_for_second, 'cluster_labels':labels_for_second}
+            cl_loss += 0 if not self.args.mixup else mx_cl_loss * self.args.gamma 
+            return ce_loss, cl_loss, {**to_return, 'cluster_indices':indices_for_second, 'cluster_labels':labels_for_second} if self.args.mixup \
+                 else {'cluster_indices':indices_for_second, 'cluster_labels':labels_for_second}
             
         else:
             if positive_pair is None :

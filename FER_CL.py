@@ -175,7 +175,7 @@ def get_args():
     args.add_argument('--debug', default=False)
     args.add_argument('--except_sam', default=False)
     args.add_argument('--mixup', default=False )
-
+    args.add_argument('--gamma',type=float, default=False)
     args.add_argument('--k_grad', default=False)
     args.add_argument('--balanced_cl', default=False)
     args.add_argument('--k_meeting', type=str, default=None)

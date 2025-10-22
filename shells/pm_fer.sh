@@ -31,4 +31,4 @@ python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --model_type=kprpe12m --feature_branch=True --use_bn=True \
 --loss=EKCL --num_clusters 80 200 --sizes_clusters 3 5 --balanced_cl=True --batch_pairs_only=True --utilize_target_centers=True 
 
-python3 -c "from utils.pushover import send_message; send_message(' pm_fer finished')"
+python3 -c "from utils.pushover import send_message; send_message(' pm_fer finished')" 
