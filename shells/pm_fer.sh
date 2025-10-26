@@ -3,7 +3,7 @@
 #SBATCH -A m1248_g 
 #SBATCH -q regular
 #SBATCH -N 1
-#SBATCH -t 30:00:00
+#SBATCH -t 21:00:00
 #SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=4
 #SBATCH --gpus-per-task=1
