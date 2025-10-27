@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -J hcir_fer
 #SBATCH -A m1248_g 
-#SBATCH -q regular
+#SBATCH -q shared
 #SBATCH -N 1
-#SBATCH -t 21:00:00
-#SBATCH --gpus-per-node=4
-#SBATCH --ntasks-per-node=4
+#SBATCH -t 09:00:00
+#SBATCH --gpus-per-node=1
+#SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
@@ -25,29 +25,12 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
-CUDA_VISIBLE_DEVICES=0 python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
---learning_rate=1e-6 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
---dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
---model_type=kprpe12m --feature_branch=True --use_bn=True \
---loss=KBCL_ETF --kcl_k=32 --moco_k=1024 --utilize_target_centers=True --etf_weight=1.5 --balanced_cl=True --temperature=0.1 &
 
-CUDA_VISIBLE_DEVICES=1 python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
+python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --learning_rate=1e-6 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
---dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
---model_type=kprpe12m --feature_branch=True --use_bn=True \
---loss=KBCL_ETF --kcl_k=32 --moco_k=1024 --utilize_target_centers=True --etf_weight=1.5 --balanced_cl=True --temperature=0.1 &
-
-CUDA_VISIBLE_DEVICES=2 python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
---learning_rate=1e-6 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
---dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
---model_type=kprpe12m --feature_branch=True --use_bn=True \
---loss=KBCL_ETF --kcl_k=32 --moco_k=1024 --utilize_target_centers=True --etf_weight=1.5 --balanced_cl=True --temperature=0.1 &
-
-CUDA_VISIBLE_DEVICES=3 python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
---learning_rate=1e-6 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
---dataset_name=AffectNet --dataset_path=../data/AffectNet8 --num_classes=8 --use_sampler=True --img_size=112 \
---model_type=kprpe12m --feature_branch=True --use_bn=True \
---loss=KBCL_ETF --kcl_k=32 --moco_k=1024 --utilize_target_centers=True --etf_weight=1.5 --balanced_cl=True --temperature=0.1 &
+--dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True --img_size=112 \
+--model_type=kprpe12m \
+--loss=CE
 
 wait
 
