@@ -2,11 +2,7 @@ from .computation import *
 from .plot import *
 from .load import *
 import torch, os
-from copy import deepcopy
 import sys; sys.path.append('..')
-from models import  CosClassifier
-from models.modules import resnet32_backbone as resnet32
-from argparse import Namespace
 
 feature_names = ['backbone_feat', 'cls_feat', 'bcl_feat', 'center_feat']
 
@@ -37,8 +33,10 @@ class Analysis:
         self.weight = self.model.weight.T.detach().cpu().numpy()
 
     def analyze_dataset(self):
-        plot_label_distribution(self.datasets[0].labels, self.datasets[1].labels, self.save_path, model_name=getattr(self.args, 'model_name', None))
-
+        plot_label_distribution(self.datasets[0].labels, self.datasets[1].labels, self.save_path, model_name=getattr(self.args, 'model_name', None),
+        dataset_name=self.args.dataset_name, boundaries=self.datasets[0].boundaries)
+        self.dataset_categories = self.datasets[0].get_macro_category()
+        
     def analyze_model_performance(self):
         train_preds, train_labels, train_logits, train_features, train_features_branch, _, training_indices= get_predictions(self.model, self.loaders[0], self.aligner,get_features=True)
         valid_preds, valid_labels, valid_logits, valid_features, valid_features_branch, centers_af_branch, valid_indices = get_predictions(self.model, self.loaders[1], self.aligner,get_features=True)
@@ -51,9 +49,9 @@ class Analysis:
         valid_prediction_indices = valid_indices[valid_prediction_indices] # dataset index 
         print(f'# mis classified samples : {valid_prediction_indices.shape[0]}')
         training_k_indices = training_indices[training_k_indices]
-        for i in list(range(valid_indices.shape[0]//8))[:10]:
-            plot_val_train_neighbors_from_datasets(validation_indices=valid_prediction_indices[i*8:(i+1)*8], training_k_indices=training_k_indices[i*8:(i+1)*8], distances=training_k_dists[i*8:(i+1)*8], 
-            val_dataset=self.loaders[1].dataset , train_dataset=self.loaders[0].dataset , val_labels=valid_labels, train_labels=train_labels, save_path=f'{self.save_path}/val_train_neighbors_from_datasets_{i}.png',n=8)
+        # for i in list(range(valid_indices.shape[0]//8))[:10]:
+        #     plot_val_train_neighbors_from_datasets(validation_indices=valid_prediction_indices[i*8:(i+1)*8], training_k_indices=training_k_indices[i*8:(i+1)*8], distances=training_k_dists[i*8:(i+1)*8], 
+        #     val_dataset=self.loaders[1].dataset , train_dataset=self.loaders[0].dataset , val_labels=valid_labels, train_labels=train_labels, save_path=f'{self.save_path}/val_train_neighbors_from_datasets_{i}.png',n=8)
         visualize_neural_collapse(X_tr=train_features, Z_tr=train_logits, y_tr=train_labels, X_va=valid_features, Z_va=valid_logits, y_va=valid_labels,
                  W=centers_wo_branch, savepath=f'{self.save_path}/wo_branch')
         print('wo_branch done')
@@ -61,8 +59,11 @@ class Analysis:
         visualize_neural_collapse(X_tr=train_features_branch, Z_tr=train_logits, y_tr=train_labels, X_va=valid_features_branch, Z_va=valid_logits, y_va=valid_labels,
                  W=centers_af_branch, savepath=f'{self.save_path}/w_branch')
         print('w_branch done')
-        valid_macro_accuracy = get_macro_accuracy(valid_preds, valid_labels)
-
+        valid_macro_accuracy, valid_macro_acc_per_class = get_macro_accuracy(valid_preds, valid_labels)
+        valid_macro_acc_per_category = get_macro_category(self.dataset_categories, valid_macro_acc_per_class)
+        print('CATEGORY ACCURACY : \n')
+        for category, acc in valid_macro_acc_per_category.items():
+            print(f'{category} : {acc * 100:.2f}%')
         #compute confusion matrix
         valid_cm = compute_confusion_matrix(valid_preds, valid_labels)
         valid_normed_cm = normalize_confusion_matrix(valid_cm, valid_labels)
@@ -170,7 +171,7 @@ class Compare:
             valid_preds.append(v_preds)
             valid_labels.append(v_labels)
             valid_confs.append(v_confs)
-            print(f'{self.args[0].model_names[idx]} Validation Macro Accuracy: {get_macro_accuracy(v_preds, v_labels) * 100:.2f}%')
+            print(f'{self.args[0].model_names[idx]} Validation Macro Accuracy: {get_macro_accuracy(v_preds, v_labels)[0] * 100:.2f}%')
 
                 
         valid_accuracies = []

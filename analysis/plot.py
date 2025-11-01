@@ -8,7 +8,7 @@ from sklearn.decomposition import PCA
 from typing import Optional, Sequence, Tuple, Callable
 from sklearn.preprocessing import StandardScaler
 
-def plot_label_distribution(train_labels, valid_labels, save_path, model_name=None):
+def plot_label_distribution(train_labels, valid_labels, save_path, dataset_name ,model_name=None, boundaries=None):
     """
     Plot histograms of class distribution for training and validation datasets side by side.
     Args:
@@ -17,6 +17,23 @@ def plot_label_distribution(train_labels, valid_labels, save_path, model_name=No
         save_path (str): Path to save the histogram image.
         model_name (str, optional): Name of the model to annotate the figure.
     """
+    # Resolve dataset-specific boundaries if provided
+    # Expected: two thresholds [many_vs_medium, medium_vs_few]
+    b_high = None
+    b_low = None
+    if boundaries is not None:
+        ds_bounds = None
+        try:
+            if isinstance(boundaries, dict):
+                ds_bounds = boundaries.get(dataset_name, None)
+            else:
+                ds_bounds = boundaries
+            if ds_bounds is not None and len(ds_bounds) >= 2:
+                b_high = float(ds_bounds[0])
+                b_low = float(ds_bounds[1])
+        except Exception:
+            b_high = None
+            b_low = None
     train_labels = np.array(train_labels)
     valid_labels = np.array(valid_labels)
     classes = np.arange(max(train_labels.max(), valid_labels.max()) + 1)
@@ -31,9 +48,53 @@ def plot_label_distribution(train_labels, valid_labels, save_path, model_name=No
     axes[1].set_xlabel('Class')
     axes[1].set_ylabel('Count')
     axes[1].set_title('Validation Set Class Distribution')
+
+    # Draw dotted boundary lines only on the training subplot and adjust its y-limit
+    if (b_high is not None) or (b_low is not None):
+        y_top_train = max(
+            float(train_counts.max()) if train_counts.size > 0 else 0.0,
+            b_high if b_high is not None else 0.0,
+            b_low if b_low is not None else 0.0,
+        )
+        y_top_train = y_top_train * 1.05 if y_top_train > 0 else 1.0
+        axes[0].set_ylim(0, y_top_train)
+
+        legend_lines = []
+        if b_high is not None:
+            line_high = axes[0].axhline(b_high, linestyle='--', color='crimson', linewidth=1.2,
+                                        label='Many–Medium threshold')
+            legend_lines.append(line_high)
+        if b_low is not None:
+            line_low = axes[0].axhline(b_low, linestyle='--', color='gray', linewidth=1.2,
+                                       label='Medium–Few threshold')
+            legend_lines.append(line_low)
+        if len(legend_lines) > 0:
+            axes[0].legend(loc='upper right', frameon=True)
+
+    # Ensure validation subplot has no boundary lines and its own scale
+    # Remove any lines that may have been added previously (safety against external calls)
+    for line in list(axes[1].lines):
+        try:
+            line.remove()
+        except Exception:
+            pass
+    # Set validation ylim solely from its data
+    if valid_counts.size > 0:
+        y_top_valid = float(valid_counts.max()) * 1.05 if float(valid_counts.max()) > 0 else 1.0
+        axes[1].set_ylim(0, y_top_valid)
+    # Figure-level title for paper-quality figure
     if model_name is not None:
-        fig.suptitle(f'Model: {model_name}', fontsize=16)
-    plt.tight_layout(rect=[0, 0, 1, 0.96] if model_name is not None else None)
+        fig.suptitle(
+            f"Sample Distribution — {dataset_name} (Train vs Validation)\nModel: {model_name}",
+            fontsize=16
+        )
+        plt.tight_layout(rect=[0, 0, 1, 0.90])
+    else:
+        fig.suptitle(
+            f"Sample Distribution — {dataset_name} (Train vs Validation)",
+            fontsize=16
+        )
+        plt.tight_layout(rect=[0, 0, 1, 0.93])
     plt.savefig(os.path.join(save_path, 'label_distribution.png'))
     plt.close()
 

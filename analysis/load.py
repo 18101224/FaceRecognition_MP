@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from aligners import get_aligner
 import argparse
 import os 
-
+from functools import partial
 
 def load_logs(ckpt_paths):
     results = []
@@ -48,6 +48,7 @@ def load_model(model, ckpt_path):
 
 def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
     result = []
+
     for train in ['train', 'test']:
         if 'cifar' in dataset_name : 
             n_c = 100 if '100' in dataset_name else 10
@@ -57,16 +58,15 @@ def load_dataset(args,dataset_path, dataset_name, imb_factor=None):
             dataset = Large_dataset(root=dataset_path, mode=train, transform=None)
             result.append(dataset)
         elif 'RAF-DB' in dataset_name:
-            dataset = FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=True)
+            dataset = FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type), idx=True, debug=True)
             result.append(dataset)
             if not train == 'train':
-                result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),balanced=True,idx=True))
+                result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type), balanced=True, idx=True, debug=True))
         elif 'AffectNet' in dataset_name:
-            result.append(FER(args,train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type),idx=True))
+            result.append(FER(args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type), idx=True, debug=True))
         elif 'CAER' in dataset_name:
-            result.append(FER(args=args, train=(train=='train'), transform=get_fer_transforms(train=False,model_type=args.model_type),idx=True, imb_factor=args.imb_factor ))
+            result.append(FER(args=args, train=(train=='train'), transform=get_fer_transforms(train=False, model_type=args.model_type), idx=True, imb_factor=args.imb_factor, debug=True))
     return result
-    
 def load_loaders(datasets):
     result = []
     for dataset in datasets:

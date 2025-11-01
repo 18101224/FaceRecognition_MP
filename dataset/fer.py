@@ -40,9 +40,15 @@ classes = {
     'Surprise' : 6
 }
 
+def include(loss, losses):
+    for loss_name in losses:
+        for l in loss.split('_'):
+            if l == loss_name:
+                return True
+    return False
 
 class FER(Dataset):
-    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_type='exp', imb_factor:float=1.0, rand_number=566, crop_valid=False):
+    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_type='exp', imb_factor:float=1.0, rand_number=566, crop_valid=False, debug=False):
         '''
         AFfectNet : test 
         CAER : test
@@ -52,6 +58,11 @@ class FER(Dataset):
         global classes
         self.root = args.dataset_path
         self.train = train
+        self.boundaries = {
+            'AffectNet': [60000, 20000],
+            'RAF-DB': [3000, 1000],
+            'CAER': [3500, 1000]
+        }
         post = 'train' if train else ('test' if ('Affect' in self.root or 'CAER' in self.root) else ('valid_balanced' if balanced else 'valid' ))
         offset = 1 if 'RAF' in self.root else 0 
         self.transform=transform
@@ -91,19 +102,137 @@ class FER(Dataset):
                 img = Image.open(p)
                 img = img.copy()
                 self.preloaded_images.append(img)
-
-
+                
+        self.debug = debug
+        if not debug :
+            self.qcs = include(args.loss, ['QCS'])
+            self.inverse_prior = 1/self.get_img_num_per_cls() if args.balanced_qcs else 1/np.ones(len(self.get_img_num_per_cls()))
+            self.inverse_prior = self.inverse_prior/self.inverse_prior.sum()
+            self.num_classes = len(self.get_img_num_per_cls())
+            self.rng = np.random.default_rng(None)
 
         print(f'Train:{self.train} \n {self.get_img_num_per_cls()}')
-    
+
+        
+
+    def get_macro_category(self,):
+
+
+        # Infer dataset key from root path
+        if 'Affect' in str(self.root):
+            ds_key = 'AffectNet'
+        elif 'RAF' in str(self.root):
+            ds_key = 'RAF-DB'
+        elif 'CAER' in str(self.root):
+            ds_key = 'CAER'
+        else:
+            ds_key = None
+
+        counts = self.get_img_num_per_cls().astype(int)
+
+        # Determine thresholds: use predefined if known dataset, otherwise use 67/33 quantiles
+        if ds_key in self.boundaries:
+            high, low = self.boundaries[ds_key]
+        else:
+            if len(counts) == 0:
+                return {'many': [], 'medium': [], 'few': []}
+            q67 = int(np.quantile(counts, 2/3))
+            q33 = int(np.quantile(counts, 1/3))
+            high, low = q67, q33
+
+        categories = {'many': [], 'medium': [], 'few': []}
+        for cls_idx, n in enumerate(counts):
+            if n >= high:
+                categories['many'].append(cls_idx)
+            elif n <= low:
+                categories['few'].append(cls_idx)
+            else:
+                categories['medium'].append(cls_idx)
+
+        return categories
+        
+    def sample_negative_label(self,label):
+        probs = self.inverse_prior.copy()
+        probs[label] = 0.
+        probs = probs/probs.sum()
+        return self.rng.choice(self.num_classes, size=1, p=probs)
+
+    def sample_from_class(self,idx,label,n=1):
+        # Accept torch or python ints
+        if torch.is_tensor(label):
+            label = int(label.item())
+        else:
+            label = int(label)
+        if torch.is_tensor(idx):
+            idx = int(idx.item())
+        else:
+            idx = int(idx)
+
+        # Ensure labels are a numpy array on CPU
+        if isinstance(self.labels, np.ndarray):
+            labels_np = self.labels
+        elif torch.is_tensor(self.labels):
+            labels_np = self.labels.detach().cpu().numpy()
+        else:
+            labels_np = np.asarray(self.labels, dtype=np.int64)
+
+        # Find candidate indices for the given label
+        candidate_indices = np.where(labels_np == label)[0]
+        # Exclude the anchor idx if present
+        candidate_indices = candidate_indices[candidate_indices != idx]
+        if candidate_indices.size == 0:
+            raise ValueError(f"No samples found for label {label} excluding index {idx}.")
+
+        n = int(n)
+        replace = n > candidate_indices.size
+        # Sample n indices using dataset RNG (uniform over the class)
+        idxs = self.rng.choice(candidate_indices, size=n, replace=replace)
+        return idxs.astype(np.int64)
+
     def __len__(self):
         return self.labels.shape[0]
-
-    def __getitem__(self,idx):
+    
+    def load_img(self,idx):
         if self.preloaded_images is not None:
             img = self.preloaded_images[idx]
         else:
             img = Image.open(self.paths[idx])
+        return img 
+
+    def load_qcs(self,idx,label):
+        neg_label = self.sample_negative_label(label)
+        # normalize neg_label to python int
+        if isinstance(neg_label, np.ndarray):
+            neg_label = int(neg_label.reshape(-1)[0])
+        elif torch.is_tensor(neg_label):
+            neg_label = int(neg_label.item())
+        else:
+            neg_label = int(neg_label)
+
+        pos_idxs = self.sample_from_class(idx, label, n=1)
+        neg_idxs = self.sample_from_class(idx, neg_label, n=2)
+        pos_idx = int(pos_idxs[0])
+        neg_idx1 = int(neg_idxs[0])
+        neg_idx2 = int(neg_idxs[1])
+
+        pos_img = self.load_img(pos_idx)
+        neg_img1 = self.load_img(neg_idx1)
+        neg_img2 = self.load_img(neg_idx2)
+        pos_img = self.transform(pos_img)
+        neg_img1 = self.transform(neg_img1)
+        neg_img2 = self.transform(neg_img2)
+
+        return pos_img, neg_img1, neg_img2, label, neg_label
+
+    def __getitem__(self,idx):
+        img = self.load_img(idx)
+
+        label = self.labels[idx]
+
+        if not self.debug and self.qcs and self.train : 
+            pos_img, neg_img1, neg_img2, label, neg_label = self.load_qcs(idx,label)
+            return self.transform(img), pos_img, neg_img1, neg_img2, label, neg_label
+            
         if isinstance(self.transform, list):
             samples = [tr(img) for tr in self.transform]
             if self.idx : 

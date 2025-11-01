@@ -78,8 +78,8 @@ def get_macro_accuracy(preds, labels):
     macro_accuracy = np.zeros(len(counts))
     for i in range(len(counts)):
         macro_accuracy[i] = (preds[labels==i] == i).sum() / counts[i]
-    macro_accuracy = macro_accuracy.mean()
-    return macro_accuracy
+    result = macro_accuracy.mean()
+    return result, macro_accuracy
 
 @torch.no_grad()
 def get_features(model, loader, aligner=None):
@@ -338,3 +338,14 @@ def find_nearest_training_for_misclassified(
         nn_dists[s:e] = np.sqrt(topk_D2)
 
     return mis_val_idx_sorted, nn_indices.astype(int, copy=False), nn_dists.astype(float, copy=False)
+
+
+def get_macro_category(categories, macro_accuracy):
+    result = {}
+    for category, indices in categories.items():
+        acc = 0
+        for index in indices : 
+            acc+=macro_accuracy[index]
+        acc = acc/len(indices)
+        result[category] = acc
+    return result
