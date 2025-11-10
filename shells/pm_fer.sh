@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=2
 #SBATCH --ntasks-per-node=2
 #SBATCH --gpus-per-task=1
-#SBATCH --cpus-per-task=64
+#SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 #SBATCH --mail-user=alswo01287@naver.com
