@@ -7,6 +7,7 @@ from .KCL import KCL
 from .ETF import compute_etf_loss
 from .EKCL import EKCL
 from .BCL import BCL
+from .SCL import SCL
 import sys 
 import os 
 # Temporarily add project root to import from `dataset`, then remove it
@@ -44,6 +45,8 @@ def get_cl_loss(args, model=None, init_queue=None, class_counts=None):
         return KCL(args, model, dim=args.dim, temperature=args.temperature, init_queue=init_queue)
     elif include(args.loss, ['BCL']) :
         return BCL(cls_num_list=None, temperature=args.temperature)
+    elif include(args.loss, ['SCL']) :
+        return SCL(temperature=args.temperature,)
     else:
         raise ValueError(f'{args.loss} is not supported')
 
