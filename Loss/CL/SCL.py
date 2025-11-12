@@ -15,6 +15,6 @@ class SCL:
         negative_mask = torch.eye(y.shape[0],device=features.device,dtype=torch.bool)
         num = torch.logsumexp(sims.masked_fill(label_mask,float('-inf')),dim=1)
         den = torch.log(torch.sum(torch.exp(sims.masked_fill(negative_mask,float('-inf'))),dim=1))
-        cl_loss = (label_mask.sum(dim=-1,keepdim=False) * (num-den)).mean()
+        cl_loss = -(label_mask.sum(dim=-1,keepdim=False) * (num-den)).mean()
         return ce_loss, cl_loss, None
 
