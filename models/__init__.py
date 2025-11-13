@@ -272,7 +272,7 @@ class ImbalancedModel(nn.Module):
             w = self.bn(w)
         return nn.functional.normalize(z, dim=-1), nn.functional.normalize(w, dim=-1)
 
-    def forward(self, x, features=False, keypoint=None, wo_branch=False):
+    def forward(self, x, features=False, keypoint=None, wo_branch=False, featuremap=False):
         '''
         returns : backbone_feature, rotated_feature, logit
         '''
@@ -291,7 +291,14 @@ class ImbalancedModel(nn.Module):
 
         with to_with():
             if keypoint is not None:
-                z = self.backbone(x, keypoint) 
+                if featuremap :
+                    _, featuremaps = self.backbone(x, keypoint, featuremap=True)
+                    z = featuremaps.mean(dim=1)
+                    z = torch.nn.functional.normalize(z, dim=-1, eps=1e-6)
+                    weight = self.get_kernel()
+                    return z@weight, featuremaps, weight.T
+                else:
+                    z = self.backbone(x, keypoint) 
             else:
                 z = self.backbone(x)
         
@@ -316,8 +323,11 @@ class ImbalancedModel(nn.Module):
 
         
         weight = self.get_kernel() # dim, num_classes
+
         logit = z_ @ weight
 
+        if featuremap : 
+            return logit, featuremaps, weight.T
         # if CL training 
         if features : 
             processed_feat, centers = self.process_feature_branch(z_, weight) if self.feature_branch else (z_, weight.T)

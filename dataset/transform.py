@@ -237,7 +237,8 @@ def get_clothing1m_transforms(train):
             transforms.Normalize(mean=mean, std=std)
         ])
 
-def get_fer_transforms(train,model_type):
+def get_fer_transforms(train,model_type,args=None):
+
     mean=[0.485, 0.456, 0.406] if 'kprpe' not in model_type else [0.5] * 3
     std=[0.229, 0.224, 0.225] if 'kprpe' not in model_type else [0.5] * 3
     if train :
@@ -260,7 +261,8 @@ def get_fer_transforms(train,model_type):
                 transforms.GaussianBlur(kernel_size=3)
             ], p=0.1),
             transforms.ToTensor(),
-            transforms.Normalize(mean=mean, std=std)
+            transforms.Normalize(mean=mean, std=std),
+            transforms.RandomErasing(p=0.25, scale=(0.02,0.33), value='random', inplace=False)
         ]
         # 필요 시 CutOut/Erase/Crop 증강 더 추가 가능 (landmark ROI 안전 검사 필요)
         # 예) custom cutout(눈·입 방어)는 albumentations나 직접 커스텀 함수로 구현

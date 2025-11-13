@@ -198,6 +198,9 @@ def get_args():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
+
+    if include(args.loss, ['EAC', 'BEAC']) and not args.utilize_target_centers:
+        raise ValueError('EAC and BEAC require utilize_target_centers')
     return args
 
 class Trainer:
@@ -260,7 +263,6 @@ class Trainer:
         return total_loss
 
     def get_cl_loss(self, logit, q, label ,c , ldmk=None, k=None):
-
         if self.args.utilize_class_centers:
             q_for_mu = gather_tensor(q) if self.args.world_size > 1 else q
             label_for_mu = gather_tensor(label) if self.args.world_size > 1 else label
@@ -282,7 +284,10 @@ class Trainer:
         return ce_loss, cl_loss*self.args.beta, k
 
     def run_train_forward(self, img, label, ldmk=None, k=None, loss_for_log=None, ce_only=False):
-        logit, q, c = self.model(img, keypoint=ldmk, features=True)
+        if include(self.args.loss, ['EAC', 'BEAC']) :
+            logit, q, c = self.model(img,keypoint=ldmk, featuremap=True)
+        else:
+            logit, q, c = self.model(img, keypoint=ldmk, features=True)
         temp_loss = defaultdict(float)
         bs= q.shape[0]
         ce_loss, cl_loss, k = self.get_cl_loss(logit, q, label, c, ldmk, k=k) if not ce_only else (torch.nn.functional.cross_entropy(logit, label), None, None)
@@ -316,6 +321,8 @@ class Trainer:
             self.opt.zero_grad() if self.args.loss !='SAM' else None 
             if isinstance(img, list) : 
                 img = torch.concat(img, dim=0)
+            if include(self.args.loss, ['EAC', 'BEAC']) :
+                img = torch.concat([img, torch.flip(img, dims=[-1])], dim=0)
             img, label = img.cuda(), label.cuda() # the images are list with number-of-views 
             ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
 

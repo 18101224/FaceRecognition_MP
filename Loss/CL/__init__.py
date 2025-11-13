@@ -8,6 +8,7 @@ from .ETF import compute_etf_loss
 from .EKCL import EKCL
 from .BCL import BCL
 from .SCL import SCL
+from .EAC import EAC
 import sys 
 import os 
 # Temporarily add project root to import from `dataset`, then remove it
@@ -47,6 +48,8 @@ def get_cl_loss(args, model=None, init_queue=None, class_counts=None):
         return BCL(cls_num_list=None, temperature=args.temperature)
     elif include(args.loss, ['SCL']) :
         return SCL(temperature=args.temperature,)
+    elif include(args.loss, ['EAC', 'BEAC']) :
+        return EAC(args, class_counts=class_counts)
     else:
         raise ValueError(f'{args.loss} is not supported')
 

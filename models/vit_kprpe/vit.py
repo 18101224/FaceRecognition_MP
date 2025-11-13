@@ -304,10 +304,14 @@ class VisionTransformerWithKPRPE(nn.Module):
             x_ = torch.cat([x[:, :, :], mask_tokens], dim=1)  # no cls token
             x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
             x = x_
-        return torch.reshape(x, (B, self.num_patches * self.embed_dim))
-
-    def forward(self, x, keypoints=None):
-        x = self.forward_features(x, keypoints=keypoints)
-        x = self.feature(x)
         return x
+
+    def forward(self, x, keypoints=None, featuremap=False):
+        x = self.forward_features(x, keypoints=keypoints)
+        out = self.feature(x.flatten(1))
+        if not featuremap :
+            return out
+        else:
+            return out, x
+
 
