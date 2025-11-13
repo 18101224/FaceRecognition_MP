@@ -8,3 +8,8 @@ repos/
 .venv/
 InstantID/
 ConsistentID/
+QCS/models/pretrain/
+QCS/checkpoint_raf_db/ 
+QCS/log_raf_db/
+*.pth
+datas/

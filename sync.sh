@@ -1,7 +1,10 @@
-EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/  \
+# Exclude patterns, including those from .gitignore and project-specific paths
+EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude=logs/ \
  --exclude=repos/ --exclude=.gits/ --exclude=wandb/ --exclude=.venv/ --exclude=.git/ \
  --exclude=InstantID/checkpoints/ --exclude=InstantID/models/ --exclude=ConsistentID/SG161222/ --exclude=ConsistentID/JackAILab/ \
- --exclude=ConsistentID/laion/ --exclude=ConsistentID/JackAILab/"
+ --exclude=ConsistentID/laion/ --exclude=ConsistentID/JackAILab/ \
+ --exclude=QCS/models/pretrain/ --exclude=datas/ --exclude=QCS/checkpoint_raf_db/ --exclude=QCS/log_raf_db/ --exclude=*.pth"
+
 SOURCE_DIR="."
 
 SERVERS=(
@@ -28,7 +31,7 @@ for SERVER in "${SERVERS[@]}"; do
     echo "synchroized to $SERVER"
 
 done 
-
+wait
 exit 0
 # wait
 # echo "****************************************"
