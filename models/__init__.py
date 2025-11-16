@@ -199,7 +199,7 @@ class ImbalancedModel(nn.Module):
     def __init__(self, num_classes, model_type: str, feature_branch=False, feature_module=False,  
     regular_simplex=False, cos=True
     , learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False,
-    decomposition=False, img_size=112, use_bn = False):
+    decomposition=False, img_size=112, use_bn = False, gap=False):
         global model_dict, dim_dict
         if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
@@ -242,6 +242,7 @@ class ImbalancedModel(nn.Module):
         self.decomposition = OrthogonalDecomposer(dim_in) if decomposition=='Cayley' else None
 
         self.img_size=img_size
+        self.gap = gap
 
 
     def init_weight(self, weight):
@@ -291,14 +292,17 @@ class ImbalancedModel(nn.Module):
 
         with to_with():
             if keypoint is not None:
-                if featuremap :
+                if featuremap or self.gap :
                     _, featuremaps = self.backbone(x, keypoint, featuremap=True)
                     z = featuremaps.mean(dim=1)
                     z = torch.nn.functional.normalize(z, dim=-1, eps=1e-6)
                     weight = self.get_kernel()
-                    return z@weight, featuremaps, weight.T
+                    if featuremap :
+                        return z@weight, featuremaps, weight.T
+                    else:
+                        return z@weight
                 else:
-                    z = self.backbone(x, keypoint) 
+                    z = self.backbone(x, keypoint)
             else:
                 z = self.backbone(x)
         

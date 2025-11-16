@@ -51,7 +51,8 @@ def get_model(args):
             'remain_backbone': False, 
             'decomposition': False,
             'img_size': args.img_size,
-            'use_bn': args.use_bn
+            'use_bn': args.use_bn,
+            'gap': include(args.loss, ['EAC', 'BEAC'])
         }
         model = ImbalancedModel(**model_params)
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if 'kprpe' in args.model_type else None
@@ -321,7 +322,7 @@ class Trainer:
             self.opt.zero_grad() if self.args.loss !='SAM' else None 
             if isinstance(img, list) : 
                 img = torch.concat(img, dim=0)
-            if include(self.args.loss, ['EAC', 'BEAC']) :
+            if include(self.args.loss, ['EAC', 'BEAC']) : 
                 img = torch.concat([img, torch.flip(img, dims=[-1])], dim=0)
             img, label = img.cuda(), label.cuda() # the images are list with number-of-views 
             ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 

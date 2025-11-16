@@ -1,5 +1,6 @@
 from .computation import *
 from .plot import *
+from sklearn.metrics import f1_score, balanced_accuracy_score, precision_score, recall_score
 from .load import *
 import torch, os
 import sys; sys.path.append('..')
@@ -22,8 +23,6 @@ class Analysis:
         self.args = concat_args(self.args, [log])[0]
 
         #load dataset 
-
-
         #load model
 
         self.model = load_models(self.args.model_paths, [self.args])[0]
@@ -40,6 +39,13 @@ class Analysis:
     def analyze_model_performance(self):
         train_preds, train_labels, train_logits, train_features, train_features_branch, _, training_indices= get_predictions(self.model, self.loaders[0], self.aligner,get_features=True)
         valid_preds, valid_labels, valid_logits, valid_features, valid_features_branch, centers_af_branch, valid_indices = get_predictions(self.model, self.loaders[1], self.aligner,get_features=True)
+
+        valid_f1_score = f1_score(valid_labels, valid_preds, average='macro')
+        valid_balanced_accuracy = balanced_accuracy_score(valid_labels, valid_preds)
+        valid_macro_precision = precision_score(valid_labels, valid_preds, average='macro')
+        valid_macro_recall = recall_score(valid_labels, valid_preds, average='macro')
+        print(f'valid_f1_score: {valid_f1_score},\n valid_balanced_accuracy: {valid_balanced_accuracy},\n valid_macro_precision: {valid_macro_precision},\n valid_macro_recall: {valid_macro_recall}')
+        import sys; sys.exit()
         valid_preds_balanced, valid_labels_balanced, valid_confs_balanced, _, _, _, _ = get_predictions(self.model, self.loaders[2], self.aligner,get_features=True) if len(self.loaders) == 3 else (None, None, None, None, None, None, None)
         centers_wo_branch = self.model.get_kernel().T.detach().cpu().numpy()
         plot_dist(training_features=train_features, validation_features=valid_features, target_centers=centers_wo_branch,

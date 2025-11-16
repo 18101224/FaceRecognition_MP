@@ -18,13 +18,13 @@ class EAC:
         y : bs 
         logits : 2bs, n_c 
         '''
-        ce_loss = torch.nn.functional.cross_entropy(logits, y.repeat(2))
+        ce_loss = torch.nn.functional.cross_entropy(logits[:y.shape[0]], y)
         bs = y.shape[0]
         # bs,n_c, L 
         sims = (features.unsqueeze(1) @ weight.unsqueeze(0).unsqueeze(-1)).squeeze(-1)
         if self.balanced : 
             sims = sims * self.weight.view(1,-1,1)
-        sims_o, sims_f = torch.split(sims, [bs,bs], dim=0)
+        sims_o, sims_f = torch.split(sims, [bs,bs], dim=0) # bs, n_c, L 
         h,w = int(np.sqrt(sims_o.shape[-1])), int(np.sqrt(sims_o.shape[-1]))
         sims_o = sims_o.reshape(*sims_o.shape[:-1],h,w)
         sims_f = sims_f.reshape(*sims_f.shape[:-1],h,w)

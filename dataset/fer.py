@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 __all__ = ['FER','FER_KFOLD','ClassBatchSampler']
 class FER(Dataset):
-    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_factor=1.0):
+    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_factor=1.0, debug=False):
         super().__init__()
         self.root = args.dataset_path
         self.train = train
@@ -53,7 +53,46 @@ class FER(Dataset):
                 img = Image.open(p)
                 img = img.copy()
                 self.preloaded_images.append(img)
+        self.get_macro_category()
+    def get_macro_category(self,):
+        boundaries = {
+            'AffectNet': [100000, 40000],
+            'RAF-DB': [3000, 1500],
+            'CAER': [3000, 1000]
+        }
 
+        # Infer dataset key from root path
+        if 'Affect' in str(self.root):
+            ds_key = 'AffectNet'
+        elif 'RAF' in str(self.root):
+            ds_key = 'RAF-DB'
+        elif 'CAER' in str(self.root):
+            ds_key = 'CAER'
+        else:
+            ds_key = None
+        self.boundaries = boundaries[ds_key]
+        counts = self.get_img_num_per_cls().astype(int)
+
+        # Determine thresholds: use predefined if known dataset, otherwise use 67/33 quantiles
+        if ds_key in boundaries:
+            high, low = boundaries[ds_key]
+        else:
+            if len(counts) == 0:
+                return {'many': [], 'medium': [], 'few': []}
+            q67 = int(np.quantile(counts, 2/3))
+            q33 = int(np.quantile(counts, 1/3))
+            high, low = q67, q33
+
+        categories = {'many': [], 'medium': [], 'few': []}
+        for cls_idx, n in enumerate(counts):
+            if n >= high:
+                categories['many'].append(cls_idx)
+            elif n <= low:
+                categories['few'].append(cls_idx)
+            else:
+                categories['medium'].append(cls_idx)
+
+        return categories
     def __len__(self):
         return self.labels.shape[0]
 
