@@ -25,20 +25,32 @@ from concurrent.futures import ThreadPoolExecutor
 
 __all__ = ['FER','FER_KFOLD','ClassBatchSampler']
 class FER(Dataset):
-    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_factor=1.0, debug=False):
+    def __init__(self,args,transform,train=True, idx=True, balanced=False, imb_factor=1.0, debug=False, random_seed=42):
         super().__init__()
         self.root = args.dataset_path
         self.train = train
-        post = 'train' if train else ('test' if 'Affect' in self.root else ('valid_balanced' if balanced else 'valid' ))
+        post = 'train' if train else ('test' if ('CAER' in self.root) or ('Affect' in self.root) else ('valid_balanced' if balanced else 'valid' ))
         offset = 1 if 'RAF' in self.root else 0 
         self.transform=transform
         self.paths = []
         self.labels = []
-        for i in range(7):
-            paths = sorted(glob(f'{self.root}/{post}/{i+offset}/*'))
-            self.paths += paths 
-            self.labels += [i]*len(paths)
+        if 'CAER' in self.root:
+            paths = sorted(glob(f'{self.root}/{post}/*'))
+
+            for i, path in enumerate(paths):
+                img_paths = sorted(glob(f'{path}/*'))
+
+                self.paths += img_paths 
+                self.labels += [i]*len(img_paths)
+        else:
+            for i in range(7):
+                paths = sorted(glob(f'{self.root}/{post}/{i+offset}/*'))
+                self.paths += paths 
+                self.labels += [i]*len(paths)
+
         self.labels = np.array(self.labels,dtype=np.int64)
+        if imb_factor != 1.0 and train:
+            self._make_imbalanced_dataset(imb_factor, random_seed)
         self.img_num_list = None 
         self.get_img_num_per_cls()
         self.idx = idx 
@@ -54,6 +66,7 @@ class FER(Dataset):
                 img = img.copy()
                 self.preloaded_images.append(img)
         self.get_macro_category()
+
     def get_macro_category(self,):
         boundaries = {
             'AffectNet': [100000, 40000],
@@ -112,6 +125,44 @@ class FER(Dataset):
                 return self.transform(img), self.labels[idx] , idx
             else : 
                 return self.transform(img), self.labels[idx]
+    
+    def _make_imbalanced_dataset(self, imb_factor, random_seed=42):
+        """
+        Create imbalanced dataset using exponential decay (ImageNet-LT / CIFAR-LT style).
+        
+        Args:
+            imb_factor: imbalance ratio, e.g., 0.01 means 1% of samples for the last class
+            random_seed: random seed for reproducibility (default: 42)
+        """
+        # Set random seed for reproducibility
+        np.random.seed(random_seed)
+        
+        num_classes = len(np.unique(self.labels))
+        img_num_list = []
+        
+        # Calculate the number of images per class using exponential decay
+        for cls_idx in range(num_classes):
+            num = int(np.sum(self.labels == cls_idx) * (imb_factor ** (cls_idx / (num_classes - 1))))
+            img_num_list.append(num)
+        
+        # Create indices to keep for each class
+        new_paths = []
+        new_labels = []
+        
+        for cls_idx in range(num_classes):
+            cls_indices = np.where(self.labels == cls_idx)[0]
+            # Randomly select samples to keep
+            selected_indices = np.random.choice(
+                cls_indices, 
+                size=img_num_list[cls_idx], 
+                replace=False
+            )
+            new_paths.extend([self.paths[i] for i in selected_indices])
+            new_labels.extend([cls_idx] * img_num_list[cls_idx])
+        
+        # Update paths and labels
+        self.paths = new_paths
+        self.labels = np.array(new_labels, dtype=np.int64)
     
     def get_img_num_per_cls(self):
         if self.img_num_list is None:
