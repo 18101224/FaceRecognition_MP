@@ -199,7 +199,7 @@ class ImbalancedModel(nn.Module):
     def __init__(self, num_classes, model_type: str, feature_branch=False, feature_module=False,  
     regular_simplex=False, cos=True
     , learnable_input_dist=False, input_layer = False, freeze_backbone=False, remain_backbone=False,
-    decomposition=False, img_size=112, use_bn = False, gap=False):
+    decomposition=False, img_size=112, use_bn = False, gap=False, scn=False):
         global model_dict, dim_dict
         if model_type not in model_dict:
             raise ValueError(f"Invalid model type: {model_type}")
@@ -243,6 +243,9 @@ class ImbalancedModel(nn.Module):
 
         self.img_size=img_size
         self.gap = gap
+
+        self.scn_weight = nn.Parameter(torch.randn((dim_in,1),requires_grad=True)) if scn else None 
+
 
 
     def init_weight(self, weight):
@@ -306,6 +309,14 @@ class ImbalancedModel(nn.Module):
             else:
                 z = self.backbone(x)
         
+        if self.scn_weight is not None : 
+            weight = self.get_kernel()
+            logit = z @ weight 
+            if self.training : 
+                return logit, torch.nn.functional.sigmoid(z @ self.scn_weight ), None 
+            else:
+                return logit 
+                
         if isinstance(z, tuple):
             z = z[0]
 

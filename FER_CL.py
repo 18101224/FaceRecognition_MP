@@ -52,7 +52,8 @@ def get_model(args):
             'decomposition': False,
             'img_size': args.img_size,
             'use_bn': args.use_bn,
-            'gap': include(args.loss, ['EAC', 'BEAC'])
+            'gap': include(args.loss, ['EAC', 'BEAC']),
+            'scn': include(args.loss, ['SCN'])
         }
         model = ImbalancedModel(**model_params)
     aligner = get_aligner('checkpoint/adaface_vit_base_kprpe_webface12m').cuda() if 'kprpe' in args.model_type else None
@@ -310,7 +311,7 @@ class Trainer:
         logit = self.model(img, keypoint=ldmk, features=False)
         loss = torch.nn.functional.cross_entropy(logit, label)
         return loss, logit
-            
+        
     def run_train_epoch(self):
         self.model.train()
         total_acc = 0
