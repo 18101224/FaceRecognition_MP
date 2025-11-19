@@ -29,5 +29,5 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 python3 FER_CL.py --num_workers=32 --use_tf=True \
 --learning_rate=1e-5 --batch_size=256 --n_epochs=100 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=CAER --dataset_path=../data/CAER-S --num_classes=7 --use_sampler=True --img_size=112 \
---model_type=kprpe12m  \
+--model_type=kprpe12m --resume_path=checkpoint/pm167333d9-0eb3-455d-a9d8-6d741490a205 \
 --loss=CE 
