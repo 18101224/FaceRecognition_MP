@@ -32,7 +32,7 @@ CUDA_VISIBLE_DEVICES=$i python3 FER_CL.py --num_workers=32 --use_tf=True \
 --learning_rate=1e-5 --batch_size=256 --n_epochs=100 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=CAER --dataset_path=../data/CAER-S --num_classes=7 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m --feature_branch=True --use_bn=True \
---loss=KBCL_ETF --temperature=0.1 --utilize_target_centers=True --beta=${betas[$i]} --moco_k=256 --kcl_k=32 --etf_weight=1 &
+--loss=KBCL_ETF --temperature=0.1 --utilize_target_centers=True --beta=1 --moco_k=256 --kcl_k=32 --etf_weight=${betas[$i]} &
 done
 
 wait
