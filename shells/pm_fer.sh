@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH -J hcir_fer
 #SBATCH -A m1248_g 
-#SBATCH -q regular
+#SBATCH -q shared
 #SBATCH -N 1
 #SBATCH -t 13:00:00
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=4
+#SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=32
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
