@@ -302,7 +302,7 @@ def compute_class_spherical_means(
                 means.append(mean_c.detach())
         else:
             # If class not observed, use zero vector placeholder with correct dim
-            means.append(torch.zeros(feature_dim if feature_dim is not None else 0))
+            means.append(torch.zeros(feature_dim if feature_dim is not None else 0, device=device))
 
 
     means = torch.stack(means, dim=0) if len(means) > 0 else torch.empty(0)
