@@ -3,7 +3,7 @@
 #SBATCH -A m1248_g 
 #SBATCH -q regular
 #SBATCH -N 1
-#SBATCH -t 11:00:00
+#SBATCH -t 09:00:00
 #SBATCH --gpus-per-node=4
 #SBATCH --ntasks-per-node=4
 #SBATCH --gpus-per-task=1
@@ -25,13 +25,34 @@ conda activate /pscratch/sd/s/sgkim/hcir/cv
 # NODELIST=$(scontrol show hostnames "$SLURM_NODELIST")
 # NODE1=$(echo "$NODELIST" | sed -n '1p')
 
-ks=(5 10 32 128)
-for i in 0 1 2 3; do
-CUDA_VISIBLE_DEVICES=$i python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
+
+srun --exclusive -N1 -n1 --cpus-per-task=32 --gres=gpu:1 bash -c "
+python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
 --learning_rate=1e-5 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
 --dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True --img_size=112 \
 --model_type=kprpe12m --feature_branch=True --use_bn=True \
---loss=KBCL --beta=1 --kcl_k=${ks[$i]} --moco_k=1024 --utilize_target_centers=True &
-done
+--loss=KBCL --beta=1 --temperature=0.1 --moco_k=1024 --kcl_k=10 --utilize_target_centers=True " &
+
+srun --exclusive -N1 -n1 --cpus-per-task=32 --gres=gpu:1 bash -c "
+python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
+--learning_rate=1e-5 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
+--dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True --img_size=112 \
+--model_type=kprpe12m --feature_branch=True --use_bn=True \
+--loss=KBCL --beta=1 --temperature=0.1 --moco_k=1024 --kcl_k=10 --utilize_target_centers=True " &
+
+srun --exclusive -N1 -n1 --cpus-per-task=32 --gres=gpu:1 bash -c "
+python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
+--learning_rate=1e-5 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
+--dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True --img_size=112 \
+--model_type=kprpe12m --feature_branch=True --use_bn=True \
+--loss=KBCL --beta=1 --temperature=0.1 --moco_k=1024 --kcl_k=5 --utilize_target_centers=True " &
+
+srun --exclusive -N1 -n1 --cpus-per-task=32 --gres=gpu:1 bash -c "
+python3 FER_CL.py --world_size=1 --num_workers=32 --use_tf=True \
+--learning_rate=1e-5 --batch_size=256 --n_epochs=200 --weight_decay=1e-4 --optimizer=SAM --scheduler=exp \
+--dataset_name=RAF-DB --dataset_path=../data/RAF-DB_balanced --num_classes=7 --use_sampler=True --img_size=112 \
+--model_type=kprpe12m --feature_branch=True --use_bn=True \
+--loss=KBCL --beta=1 --temperature=0.1 --moco_k=1024 --kcl_k=5 --utilize_target_centers=True " &
 
 wait 
+
