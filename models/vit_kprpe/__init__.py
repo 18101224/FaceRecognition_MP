@@ -22,7 +22,6 @@ class ViTKPRPEModel(BaseModel):
         super(ViTKPRPEModel, self).__init__(config)
         self.net = net
 
-
     @classmethod
     def from_config(cls, config):
 

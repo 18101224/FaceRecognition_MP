@@ -41,8 +41,8 @@ class KCL(nn.Module):
                 features ,      # [N, D] 앵커 임베딩
                 y , 
                 weight ,
-                centers  ,
-                positive_pair  = None ,
+                centers=None,
+                positive_pair= None ,
                 **kwargs        
                 ):           # scalar 손실값
         
@@ -53,11 +53,10 @@ class KCL(nn.Module):
 
         if weight is not None :
             features = torch.cat([features, weight], dim=0)
-        if centers is not None :
-            features = torch.cat([features, centers], dim=0)
 
-        if weight is not None or centers is not None :
-            y = torch.cat([y, torch.arange(self.args.num_classes, device=torch.device('cuda')).repeat(2 if self.args.utilize_class_centers else 1)], dim=0)
+
+        if weight is not None :
+            y = torch.cat([y, torch.arange(self.args.num_classes, device=torch.device('cuda'))], dim=0)
 
         if positive_pair is None :
             positive_pair = self.moco.get_k(y,k=self.args.kcl_k)

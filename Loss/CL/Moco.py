@@ -49,7 +49,59 @@ class Moco:
             self.rank = 0
 
         self.args = args 
+        self.pointer = 0
     # ... (다른 메서드들은 동일) ...
+
+    def get_queue(self, class_idx: int | None = None):
+        """
+        Returns:
+            - if class_idx is None: [num_classes, K, dim]
+            - else: [K, dim] for the requested class
+        """
+        if class_idx is None:
+            return self.queue.clone()
+        return self.queue[int(class_idx)].clone()
+
+    @torch.no_grad()
+    def enqueue_embeddings(self, keys: torch.Tensor, class_idx: int = 0):
+        """
+        keys: [N, dim] (already normalized or not, caller policy)
+        queue: [C_or_1, K, dim]
+        pointer: write position in [0, K)
+        FIFO via circular buffer.
+        """
+        if keys is None:
+            return
+        if keys.ndim != 2:
+            raise ValueError(f"keys must be 2D [N, dim], got shape={tuple(keys.shape)}")
+
+        K = self.queue.shape[1]
+
+        # device/dtype 맞추기 (원하면 제거 가능)
+        keys = keys.to(device=self.queue.device, dtype=self.queue.dtype)
+
+        n = keys.shape[0]
+
+        # 배치가 큐보다 크면: 최신 K개만 남기고 나머지는 버림 (FIFO 관점에서 자연스러움)
+        if n >= K:
+            keys = keys[-K:]
+            n = K
+
+        ptr = int(self.pointer)
+
+        end = ptr + n
+        if end <= K:
+            # 한 번에 들어감
+            self.queue[class_idx, ptr:end, :] = keys
+        else:
+            # wrap-around: 뒤쪽 채우고, 남은 건 앞쪽으로
+            first_len = K - ptr
+            self.queue[class_idx, ptr:K, :] = keys[:first_len]
+            second_len = end - K  # = n - first_len
+            self.queue[class_idx, 0:second_len, :] = keys[first_len:]
+
+        # 포인터 갱신 (circular)
+        self.pointer = (ptr + n) % K
 
 
     @torch.no_grad()
@@ -88,8 +140,8 @@ class Moco:
         """
         Encode key features from images
         """
-        return F.normalize(self.key_encoder(imgs, keypoint=ldmks, features=True)[1], dim=1)
-
+        _,feature,_ = self.key_encoder(imgs, keypoint=ldmks, features=True)
+        return F.normalize(feature, dim=-1)
     @torch.no_grad()
     def enqueue_distributed(self, imgs, labels, ldmks=None):
         """

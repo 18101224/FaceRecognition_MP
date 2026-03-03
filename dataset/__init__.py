@@ -1,18 +1,18 @@
-from .fer import FER,FER_KFOLD,ClassBatchSampler
+from .fer import FER
 from .sampler import ImbalancedDatasetSampler
-from .Imbalanced import get_cifar_dataset, Large_dataset
+from .Imbalanced import get_cifar_dataset, Large_dataset, CINIC10, CORe50, SmallNORB
 import numpy as np
 from collections import Counter
 import matplotlib.pyplot as plt
 import seaborn as sns
 from .sampler_wrapper import DistributedSamplerWrapper
-from .transform import get_transform, random_masking, point_block_mask, get_fer_transforms, masking_pair, get_multi_view_transforms
-from .noise_dataset import get_kfolds, get_loaders, get_noise_dataset
+from .transform import  get_multi_view_transforms
+
 
 # Public symbols that will be available when using `from dataset import *`
-__all__ = ['get_cifar_dataset', 'FER', 'FER_KFOLD', 'get_kfolds', 'get_transform', 'get_loaders', 'DistributedSamplerWrapper'
-, 'Large_dataset', 'get_noise_dataset', 'ImbalancedDatasetSampler',
- 'ClassBatchSampler', 'random_masking', 'point_block_mask', 'get_fer_transforms', 'masking_pair', 'get_multi_view_transforms']
+__all__ = ['get_cifar_dataset', 'FER', 'DistributedSamplerWrapper',
+ 'Large_dataset', 'ImbalancedDatasetSampler',
+ 'ClassBatchSampler', 'get_multi_view_transforms', 'CINIC10', 'CORe50', 'SmallNORB']
 
 
 def visualize_label_distribution(labels, save_path=None, figsize=(15, 5), class_names=None):

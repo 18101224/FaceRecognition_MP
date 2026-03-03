@@ -2,16 +2,15 @@ import torch
 from torch import nn 
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
-from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, get_fer_transforms, ClassBatchSampler, get_multi_view_transforms
-from models import ImbalancedModel, compute_class_spherical_means, slerp, dim_dict, calc_class_mean
+from dataset import FER, ImbalancedDatasetSampler, DistributedSamplerWrapper, get_multi_view_transforms, CINIC10, CORe50, SmallNORB
+from models import ImbalancedModel, compute_class_spherical_means, dim_dict
 from torch import distributed as dist
 from argparse import ArgumentParser
-from Loss import Moco, KCL, compute_etf_loss, EKCL, get_cl_loss
+from Loss import get_cl_loss
 from opt import SAM
 from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR
 from tqdm import tqdm
 from utils import get_acc, get_exp_id, get_ldmk, sync_scalar, measure_grad, concat_all_gather, sync_defaultdict, get_mem, get_macro_acc, gather_tensor
-from analysis import plot_angle_matrix
 import wandb
 from collections import defaultdict
 from datetime import timedelta
@@ -42,7 +41,7 @@ def get_model(args):
             'num_classes': args.num_classes, 
             'model_type': args.model_type, 
             'feature_branch': args.feature_branch,
-            'feature_module': args.feature_module, 
+            'feature_module': False, ##UUU
             'regular_simplex': False, 
             'cos': True, 
             'learnable_input_dist': False, 
@@ -61,10 +60,19 @@ def get_model(args):
          aligner, model_params
 
 def get_loaders(args):
-    train_transform, valid_transform, train_transform_wo_aug = get_multi_view_transforms(args, train=True,model_type=args.model_type), get_multi_view_transforms(args, train=False,model_type=args.model_type), get_multi_view_transforms(args, train=False,model_type=args.model_type)
-    train_dataset, valid_dataset, train_dataset_wo_aug = FER(args=args, train=True, transform=train_transform, idx=False, imb_factor=args.imb_factor), FER(args=args, train=False, transform=valid_transform, idx=False), FER(args=args, train=False, transform=train_transform_wo_aug, idx=False, balanced=False,imb_factor=args.imb_factor)
-    balanced_dataset = FER(args,transform=valid_transform, train=False, idx=False, balanced=True, imb_factor=args.imb_factor) if args.dataset_name == 'RAF-DB' else None
-    
+    ds = {
+        'RAF-DB': FER,
+        'AffectNet': FER,
+        'CAER': FER,
+        'CINIC10': CINIC10,
+        'CORe50': CORe50,
+        'SmallNORB': SmallNORB
+    }[args.dataset_name]
+    train_transform, valid_transform, train_transform_wo_aug = get_multi_view_transforms(args, train=True,model_type=args.model_type), \
+        get_multi_view_transforms(args, train=False,model_type=args.model_type),\
+        get_multi_view_transforms(args, train=False,model_type=args.model_type)
+    train_dataset, valid_dataset, train_dataset_wo_aug = ds(args=args, train=True, transform=train_transform, idx=False, imb_factor=args.imb_factor), ds(args=args, train=False, transform=valid_transform, idx=False), ds(args=args, train=False, transform=train_transform_wo_aug, idx=False, balanced=False,imb_factor=args.imb_factor)
+
     if args.world_size > 1 : 
         if args.use_sampler :
             train_sampler = DistributedSamplerWrapper(ImbalancedDatasetSampler(train_dataset, labels=train_dataset.labels), shuffle=True)
@@ -72,7 +80,6 @@ def get_loaders(args):
             train_sampler = DistributedSampler(train_dataset, shuffle=True)
         valid_sampler = DistributedSampler(valid_dataset, shuffle=False)
         train_sampler_wo_aug = DistributedSampler(train_dataset_wo_aug, shuffle=False)
-        balanced_sampler = DistributedSampler(balanced_dataset, shuffle=False) if args.dataset_name == 'RAF-DB' else None
     else:
         if args.use_sampler :
             train_sampler = ImbalancedDatasetSampler(train_dataset, labels=train_dataset.labels)
@@ -80,12 +87,10 @@ def get_loaders(args):
             train_sampler = None
         valid_sampler = None
         train_sampler_wo_aug = None
-        balanced_sampler = None
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=args.num_workers, pin_memory=True, shuffle=train_sampler is None, drop_last=True)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, sampler=valid_sampler, num_workers=args.num_workers, pin_memory=True)
     train_loader_wo_aug = DataLoader(train_dataset_wo_aug, batch_size=args.batch_size, sampler=train_sampler_wo_aug, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
-    balanced_loader = DataLoader(balanced_dataset, batch_size=args.batch_size, sampler=balanced_sampler, shuffle=False, num_workers=args.num_workers, pin_memory=True) if args.dataset_name == 'RAF-DB' else None 
-    return train_loader, valid_loader, train_loader_wo_aug, balanced_loader
+    return train_loader, valid_loader, train_loader_wo_aug
 
 def get_optimizer(args, model):
     if args.optimizer == 'SAM': 
@@ -124,7 +129,7 @@ def get_args():
 
     
     # dataset info
-    args.add_argument('--dataset_name', type=str, choices=['RAF-DB', 'AffectNet', 'CAER'], required=True)
+    args.add_argument('--dataset_name', type=str, choices=['RAF-DB', 'AffectNet', 'CAER','CINIC10','CORe50','SmallNORB',], required=True)
     args.add_argument('--dataset_path', type=str, required=True)
     args.add_argument('--num_classes', type=int, default=7)
     args.add_argument('--use_sampler', default=False)
@@ -132,15 +137,13 @@ def get_args():
     args.add_argument('--use_view', default=False)
     args.add_argument('--imb_factor', type=float, default=1.0)
 
-
     # ckpts
 
     args.add_argument('--resume_path', type=str, default=None)
     
     # model info 
-    args.add_argument('--model_type', type=str, choices=['ir50', 'kprpe12m', 'kprpe4m', 'fmae_small', 'Pyramid_ir50'], required=True)
+    args.add_argument('--model_type', type=str, choices=['ir50', 'kprpe12m', 'kprpe4m', 'fmae_small', 'Pyramid_ir50','MoCov3','Dinov2'], required=True)
     args.add_argument('--feature_branch', default=False)
-    args.add_argument('--feature_module', default=False, help='deepcomplex_depth, residual_depth')
     args.add_argument('--ckpt_path', type=str, default=None )
     args.add_argument('--clear_classifier', default=False)
     args.add_argument('--init_classifier', default=False)
@@ -150,38 +153,17 @@ def get_args():
     # CL args
     args.add_argument('--loss', type=str, default='CE', help='first argument CE KBCL KCL second option ETF ex KCL_ETF')
     args.add_argument('--kcl_k', type=int, default=5)
-
-
-
-    args.add_argument('--num_clusters', nargs='+', type=int,)
-    args.add_argument('--sizes_clusters', nargs='+', type=int,)
-    args.add_argument('--batch_pairs_only', default=False)
-
-
     args.add_argument('--beta', type=float, default=0.3)
-
     args.add_argument('--temperature', type=float, default=0.1)
     args.add_argument('--moco_k', type=int, default=2)
-
-
-
-    args.add_argument('--utilize_class_centers', default=False)
     args.add_argument('--utilize_target_centers', default=False)
-    
-    args.add_argument('--etf_weight', type=float, default=0.0)
-    args.add_argument('--etf_statistics', default=False)
-    args.add_argument('--etf_std', type=float, default=0.7)
+    args.add_argument('--adjustment', default=False)
 
     # logging args 
     args.add_argument('--measure_grad', default=False)
     args.add_argument('--debug', default=False)
-    args.add_argument('--except_sam', default=False)
-    args.add_argument('--mixup', default=False )
     args.add_argument('--gamma',type=float, default=False)
-    args.add_argument('--k_grad', default=False)
     args.add_argument('--balanced_cl', default=False)
-    args.add_argument('--k_meeting', type=str, default=None)
-    args.add_argument('--k_meeting_dist', default=False, type=float)
 
     args = args.parse_args()
     vars(args)['server'] = os.getenv('SERVER','0')
@@ -193,8 +175,7 @@ def get_args():
         args.rank = int(os.environ['RANK'])
         args.batch_size = args.batch_size // args.world_size
         torch.cuda.set_device(args.local_rank)
-    else:
-        torch.cuda.set_device(0)
+
 
     if args.use_tf:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -209,12 +190,12 @@ class Trainer:
     def __init__(self, args):
         self.args = args 
         self.model, self.aligner, self.model_params = get_model(args)
-        self.train_loader, self.valid_loader, self.train_loader_wo_aug, self.balanced_loader = get_loaders(args)
+        self.train_loader, self.valid_loader, self.train_loader_wo_aug = get_loaders(args)
         self.init_weight() if (not args.loss == 'CE' or args.resume_path is not None) else None 
         self.opt, self.scheduler = get_optimizer(args, self.model)
         self.init_logs()
         self.cl_loss = get_cl_loss(args, deepcopy(self.model if self.args.world_size==1 else self.model.module,)
-        , init_queue=get_queue(args, self.model, self.train_loader_wo_aug,aligner=self.aligner) if not include(self.args.loss, ['KCL', 'KBCL']) else None,  class_counts=torch.tensor(self.train_loader.dataset.get_img_num_per_cls(), device=torch.device('cuda'))) 
+        , init_queue=None,  class_counts=torch.tensor(self.train_loader.dataset.get_img_num_per_cls(), device=torch.device('cuda'))) 
     
     def init_logs(self):
         if self.args.resume_path is not None:
@@ -265,23 +246,12 @@ class Trainer:
         return total_loss
 
     def get_cl_loss(self, logit, q, label ,c , ldmk=None, k=None):
-        if self.args.utilize_class_centers:
-            q_for_mu = gather_tensor(q) if self.args.world_size > 1 else q
-            label_for_mu = gather_tensor(label) if self.args.world_size > 1 else label
-            temp_mean, temp_mask = calc_class_mean(q_for_mu, label_for_mu, self.args.num_classes)
-            temp_mean = slerp(self.mean[temp_mask==True].detach().clone(), temp_mean[temp_mask==True], 0.001)
-            now_mean = self.mean.clone().detach()
-            now_mean[temp_mask==True] = temp_mean 
-            self.mean[temp_mask==True] = now_mean[temp_mask==True].detach().clone()
-            # returns aggregated class centers ( instance ) 
-        else:
-            now_mean = None
 
         weight = c if self.args.utilize_target_centers else None
 
 
-        ce_loss, cl_loss, k = self.cl_loss(logits=logit, features=q, y=label, weight=weight, centers=now_mean,
-        model=self.model if self.args.world_size==1 else self.model.module ,aligner=self.aligner, positive_pair=k, requires_grad=self.args.k_grad)
+        ce_loss, cl_loss, k = self.cl_loss(logits=logit, features=q, y=label, weight=weight,
+        model=self.model if self.args.world_size==1 else self.model.module ,aligner=self.aligner, positive_pair=k)
 
         return ce_loss, cl_loss*self.args.beta, k
 
@@ -289,6 +259,8 @@ class Trainer:
         if include(self.args.loss, ['EAC', 'BEAC']) :
             logit, q, c = self.model(img,keypoint=ldmk, featuremap=True)
         else:
+            if include(self.args.loss,['NCL']):
+                img, k = torch.split(img, [label.shape[0]]*2, dim=0) if k is None else (img[:label.shape[0]],k)
             logit, q, c = self.model(img, keypoint=ldmk, features=True)
         temp_loss = defaultdict(float)
         bs= q.shape[0]
@@ -298,12 +270,6 @@ class Trainer:
         if loss_for_log is not None:
             loss_for_log['CL']+= cl_loss.detach().item()*bs if cl_loss is not None else 0
             loss_for_log['CE']+=ce_loss.detach().item()*bs 
-        if include(self.args.loss, ['ETF']) and not ce_only :
-            etf_loss = compute_etf_loss(self.model.get_kernel().T if self.args.world_size==1 else self.model.module.get_kernel().T, self.args.etf_weight,
-             statistics=self.args.etf_statistics, std_weight=self.args.etf_std)
-            temp_loss['ETF']=etf_loss
-            if loss_for_log is not None:
-                loss_for_log['ETF']+=etf_loss.detach().item()*bs
         return logit[:label.shape[0]], self.process_loss(temp_loss), k
     
     @torch.inference_mode()
@@ -322,13 +288,15 @@ class Trainer:
             self.model.zero_grad()
             self.opt.zero_grad() if self.args.loss !='SAM' else None 
             if isinstance(img, list) : 
+                if include(self.args.loss,['NCL']):
+                    img = img[:-1]
                 img = torch.concat(img, dim=0)
             if include(self.args.loss, ['EAC', 'BEAC']) : 
                 img = torch.concat([img, torch.flip(img, dims=[-1])], dim=0)
             img, label = img.cuda(), label.cuda() # the images are list with number-of-views 
             ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
 
-            logit, loss, k = self.run_train_forward(img, label, ldmk, k=None, loss_for_log=loss_for_log, ce_only=self.args.except_sam)
+            logit, loss, k = self.run_train_forward(img, label, ldmk, k=None, loss_for_log=loss_for_log) ##UUU
             loss.backward()
 
             if self.args.measure_grad : 
@@ -373,26 +341,17 @@ class Trainer:
             total_acc += get_acc(logit, label)*label.shape[0]
             total_macro_acc += get_macro_acc(logit, label)
 
-        if self.args.dataset_name == 'RAF-DB':
-            for img, label in tqdm(self.balanced_loader, disable=self.args.world_size > 1 and self.args.rank != 0,
-             desc=f"validating epoch {self.epoch} latest_acc: {(self.log['valid_acc'][-1] if len(self.log['valid_acc']) > 0 else 0):.4f} best_acc: {self.best_acc:.4f}"):
-                img, label = img.cuda(), label.cuda()
-                ldmk = get_ldmk(img, self.aligner) if self.aligner is not None else None 
-                loss, logit = self.run_valid_forward(img, label, ldmk)
-                balanced_loss += loss.detach().item()*label.shape[0]
-                balanced_acc += get_acc(logit, label)*label.shape[0]
 
         if self.args.world_size > 1 :
             total_loss = sync_scalar(total_loss)
             total_acc = sync_scalar(total_acc)
             dist.all_reduce(total_macro_acc, op=dist.ReduceOp.SUM)
-            balanced_loss = sync_scalar(balanced_loss) if self.balanced_loader is not None else 0
-            balanced_acc = sync_scalar(balanced_acc) if self.balanced_loader is not None else 0
+
 
         N = len(self.valid_loader.dataset) 
-        NB = len(self.balanced_loader.dataset) if self.balanced_loader is not None else 1
+
         total_macro_acc = (total_macro_acc / torch.tensor(self.valid_loader.dataset.get_img_num_per_cls(), device=torch.device('cuda'), dtype=torch.float32)).float().mean().detach().cpu().item()
-        return total_acc / N, total_loss/N, balanced_acc / NB, balanced_loss / NB, total_macro_acc
+        return total_acc / N, total_loss/N, total_macro_acc
 
     def save(self, valid_acc, valid_macro_acc):
         if valid_acc > self.best_acc : 
@@ -425,7 +384,7 @@ class Trainer:
 
     def run_epoch(self):
         train_acc, train_loss_for_log = self.run_train_epoch()
-        valid_acc, valid_loss, balanced_acc, balanced_loss, valid_macro_acc = self.run_valid_epoch()
+        valid_acc, valid_loss, valid_macro_acc = self.run_valid_epoch()
         self.log['train_acc'].append(train_acc)
         for key, value in train_loss_for_log.items():
             self.log[key].append(value)
@@ -439,14 +398,12 @@ class Trainer:
             'valid_loss': valid_loss,
             'best_acc': self.best_acc,
             'epoch': self.epoch,
-            'valid_acc_balanced': balanced_acc,
-            'valid_loss_balanced': balanced_loss,
             'valid_macro_acc': valid_macro_acc,
             **dict(train_loss_for_log),
             **{k:v for k,v in zip(['avail_memory', 'rss_memory'], list(get_mem()))}
             })
             # save angle matrix image each epoch
-            self.save_angle_mat(self.epoch)
+
         
 
 
@@ -476,40 +433,6 @@ class Trainer:
             except Exception as _e:
                 pass
 
-    @torch.inference_mode()
-    def save_angle_mat(self, epoch):
-        if not (self.args.world_size == 1 or self.args.rank == 0):
-            return
-        save_dir = os.path.join(self.save_dir, 'angle_mat')
-        os.makedirs(save_dir, exist_ok=True)
-        kernel = self.model.get_kernel() if self.args.world_size == 1 else self.model.module.get_kernel()
-        angle_mat = (torch.arccos((kernel.T@kernel).clamp(-1.0,1.0)) * 180.0 / torch.pi).detach().cpu().numpy()
-        plot_angle_matrix(angle_mat, os.path.join(save_dir, f"{str(epoch).zfill(4)}.jpeg"))
-
-    @torch.inference_mode()
-    def save_angle_gif(self, duration_s: float = 5.0):
-        if not (self.args.world_size == 1 or self.args.rank == 0):
-            return
-        angle_dir = os.path.join(self.save_dir, 'angle_mat')
-        if not os.path.isdir(angle_dir):
-            return
-        # Collect frames
-        image_files = sorted([
-            os.path.join(angle_dir, f)
-            for f in os.listdir(angle_dir)
-            if f.lower().endswith((".png", ".jpg", ".jpeg"))
-        ])
-        if len(image_files) == 0:
-            return
-        try:
-            import imageio
-            images = [imageio.imread(fp) for fp in image_files]
-            per_frame = duration_s / max(1, len(images))
-            durations = [per_frame] * len(images)
-            gif_path = os.path.join(self.save_dir, 'angle_mat.gif')
-            imageio.mimsave(gif_path, images, duration=durations)
-        except Exception:
-            pass
 
 
 if __name__ == '__main__':

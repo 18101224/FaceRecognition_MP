@@ -12,6 +12,7 @@ SERVERS=(
     "server7:/home/gpuadmin/mj/rl/"
     "server6:/home/gpuadmin/mj/rl/"
     "server3:/home/hcir-server3/mj/rl/"
+    "server8:/home/gpuadmin/mj/rl/"
     "mine1:/home/mj/rl/"
     
 )
@@ -21,6 +22,7 @@ SERVERS=(
     "server5:/home/gpuadmin/mj/rl/"
     "server6:/home/gpuadmin/mj/rl/"
     "server7:/home/gpuadmin/mj/rl/"
+    "server8:/home/gpuadmin/mj/rl/"
 )
 # Exclude checkpoint directory from syncing
 
