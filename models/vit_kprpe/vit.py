@@ -239,8 +239,11 @@ class VisionTransformerWithKPRPE(nn.Module):
         self.depth = depth
 
         self.rpe_config = rpe_config
-        self.keypoint_linear, self.num_buckets = make_kprpe_shared(rpe_config, depth, num_heads)
+        print(rpe_config, 'rpe_config')
 
+        self.keypoint_linear, self.num_buckets = make_kprpe_shared(rpe_config, depth, num_heads)
+        print(self.keypoint_linear, 'keypoint_linear')
+        print(self.num_buckets, 'num_buckets')
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):

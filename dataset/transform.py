@@ -114,7 +114,7 @@ def get_multi_view_transforms(args, train, model_type):
     else:
         view_tf = get_transforms(train, model_type,args)
 
-    if args.use_view and train : 
+    if getattr(args, 'use_view', False) and train : 
         return [get_transforms(train, model_type,args), deepcopy(view_tf), deepcopy(view_tf)]
     else:
         return get_transforms(train, model_type,args)

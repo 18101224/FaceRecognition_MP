@@ -105,21 +105,12 @@ def get_blocks(num_layers):
     if num_layers == 50:
         blocks1 = [
             get_block(in_channel=64, depth=64, num_units=3),
-            # get_block(in_channel=64, depth=128, num_units=4),
-            # get_block(in_channel=128, depth=256, num_units=14),
-            # get_block(in_channel=256, depth=512, num_units=3)
         ]
         blocks2 = [
-            # get_block(in_channel=64, depth=64, num_units=3),
             get_block(in_channel=64, depth=128, num_units=4),
-            # get_block(in_channel=128, depth=256, num_units=14),
-            # get_block(in_channel=256, depth=512, num_units=3)
         ]
         blocks3 = [
-            # get_block(in_channel=64, depth=64, num_units=3),
-            # get_block(in_channel=64, depth=128, num_units=4),
             get_block(in_channel=128, depth=256, num_units=14),
-            # get_block(in_channel=256, depth=512, num_units=3)
         ]
 
     elif num_layers == 100:
@@ -151,14 +142,11 @@ class Backbone(Module):
         num_layers = 50
         drop_ratio = 0.0
         mode = 'ir'
-        # assert num_layers in [50, 100, 152], 'num_layers should be 50,100, or 152'
         assert mode in ['ir', 'ir_se'], 'mode should be ir or ir_se'
         blocks1, blocks2, blocks3 = get_blocks(num_layers)
-        # blocks2 = get_blocks(num_layers)
-        if mode == 'ir':
-            unit_module = bottleneck_IR
-        elif mode == 'ir_se':
-            unit_module = bottleneck_IR_SE
+
+        unit_module = bottleneck_IR
+
         self.input_layer = Sequential(Conv2d(3, 64, (3, 3), 1, 1, bias=False),
                                       BatchNorm2d(64),
                                       PReLU(64))
@@ -211,35 +199,3 @@ class Backbone(Module):
         return x, [x1,x2,x3]
 
 
-class Parital_Backbone(Backbone):
-    def __init__(self, checkpoint_path, to_What, remain_backbone = False):
-        super(Parital_Backbone, self).__init__(checkpoint_path)
-        to_delete = [1,2,3][to_What:] if not remain_backbone else []
-        for name in to_delete:
-            if hasattr(self,f'body{name}'):
-                delattr(self,f'body{name}')
-                print(f'remain : {remain_backbone} body{name} deleted')
-        self.remain = remain_backbone 
-        self.to_what = to_What if not remain_backbone else 3
-
-    def freeze(self):
-        for p in list(self.input_layer.parameters()) + list(self.output_layer.parameters()):
-            p.requires_grad = False 
-
-        modules = [self.body1, self.body2, self.body3]
-        for p in modules[self.to_what:]:
-            p.requires_grad = True 
-        for p in modules[:self.to_what]:
-            p.requires_grad = False 
-        
-        
-    def forward(self, x):
-        features = []
-        x = F.interpolate(x, size=112)
-        x = self.input_layer(x)
-        for layer_idx in range(1,self.to_what+1):
-            layer = getattr(self,f'body{layer_idx}')
-            x = layer(x)
-            features.append(x)
-        x = F.adaptive_avg_pool2d(x, 1).reshape(x.shape[0],-1)
-        return x, features

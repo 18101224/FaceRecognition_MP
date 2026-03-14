@@ -3,7 +3,8 @@ EXCLUDE_OPTS="--exclude=checkpoint/ --exclude=results/ --exclude=gits/ --exclude
  --exclude=repos/ --exclude=.gits/ --exclude=wandb/ --exclude=.venv/ --exclude=.git/ \
  --exclude=InstantID/checkpoints/ --exclude=InstantID/models/ --exclude=ConsistentID/SG161222/ --exclude=ConsistentID/JackAILab/ \
  --exclude=ConsistentID/laion/ --exclude=ConsistentID/JackAILab/ \
- --exclude=QCS/models/pretrain/ --exclude=datas/ --exclude=QCS/checkpoint_raf_db/ --exclude=QCS/log_raf_db/ --exclude=*.pth"
+ --exclude=QCS/models/pretrain/ --exclude=datas/ --exclude=QCS/checkpoint_raf_db/ --exclude=QCS/log_raf_db/ --exclude=*.pth \
+ --exclude=logs/ "
 
 SOURCE_DIR="."
 
