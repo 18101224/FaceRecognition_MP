@@ -77,182 +77,20 @@ This repository intentionally does not cover:
 
 For any dataset used here, prepare it separately and place it under your own local data root.
 
-## 4. Supported Training Datasets
+## 4. Data Preparation
 
-Registered dataset names:
+Dataset layouts, preprocessing commands, and verification-set preparation are documented separately:
 
-- `ms1mv3`
-- `ms1mv2_subset`
-- `webface4m`
-- `webface12m`
-- `vgg2`, `vgg2_aligned`
-- `casia`, `casia_aligned`
-- `casia_raw`, `casia_parquet`
+- [dataset/README.md](dataset/README.md)
 
-Recommended dataset names for the workflows below:
+Use that document for:
 
-- `casia` for aligned CASIA-WebFace folder trees
-- `vgg2` for aligned VGGFace2 folder trees
+- supported dataset names
+- expected training dataset layouts
+- face alignment preprocessing
+- verification dataset conversion and readiness checks
 
-## 5. Dataset Layout Expectations
-
-### 5.1 CASIA aligned
-
-Training with `--dataset_name casia` expects an aligned image-folder dataset such as:
-
-```text
-/data/mj/casia-webface-aligned/
-  train/
-    <identity_1>/
-      image1.jpg
-      image2.jpg
-    <identity_2>/
-      image1.jpg
-```
-
-### 5.2 CASIA raw parquet
-
-If your local CASIA copy is in parquet form, use:
-
-- `--dataset_name casia_raw`
-
-Expected root examples:
-
-```text
-/data/mj/casia-webface-hf/
-  data/
-    train-00000-of-00020.parquet
-    ...
-```
-
-This format is useful as preprocessing input, not as the preferred KP-RPE training format.
-
-### 5.3 VGGFace2 aligned
-
-Training with `--dataset_name vgg2` expects a folder tree such as:
-
-```text
-/data/mj/vgg2_aligned/
-  train/
-    n000001/
-      xxx.jpg
-    n000002/
-      yyy.jpg
-```
-
-### 5.4 MS1MV3
-
-Training with `--dataset_name ms1mv3` expects the RecordIO layout:
-
-```text
-/data/ms1mv3/
-  train.rec
-  train.idx
-```
-
-## 6. Preprocessing
-
-The preprocessing pipeline applies MTCNN 5-point landmark detection and similarity alignment.
-
-This step is recommended before KP-RPE training on CASIA or VGGFace2.
-
-### 6.1 CASIA raw parquet -> aligned folders
-
-```bash
-bash shells/preprocessing.sh \
-  casia \
-  /data/mj/casia-webface-hf \
-  /data/mj/casia-webface-aligned \
-  cuda:0 32 4
-```
-
-### 6.2 VGGFace2 folders -> aligned folders
-
-```bash
-bash shells/preprocessing.sh \
-  vgg2 \
-  /data/mj/vgg2 \
-  /data/mj/vgg2_aligned \
-  cuda:0 32 4
-```
-
-Direct Python entrypoint:
-
-```bash
-python preprocessing.py \
-  --dataset_name casia \
-  --input_root /data/mj/casia-webface-hf \
-  --output_root /data/mj/casia-webface-aligned \
-  --device cuda:0 \
-  --batch_size 32 \
-  --num_workers 4 \
-  --log_interval 200
-```
-
-Notes:
-
-- output is written as `output_root/train/<identity>/*.jpg`
-- existing files are skipped by default
-- progress is shown through `tqdm`
-- for KP-RPE-related training and evaluation, prepare the required aligner checkpoint from the official KPRPE repository before running these commands
-
-## 7. Verification Evaluation Data Preparation
-
-The pair-verification evaluator expects Hugging Face `datasets.save_to_disk` format under a root such as:
-
-```text
-/data/mj/facerec_val/
-  lfw/
-  agedb_30/
-  cfp_fp/
-  cplfw/
-  calfw/
-```
-
-### 7.1 Convert existing `.bin` verification sets
-
-If you already have local `.bin` files under `/data/mj/eval_bins`:
-
-```bash
-python tools/prepare_verification_eval.py \
-  --bin_root /data/mj/eval_bins \
-  --out_root /data/mj/facerec_val \
-  --names lfw agedb_30 cfp_fp cplfw calfw
-```
-
-Check readiness:
-
-```bash
-python tools/check_eval_ready.py --root /data/mj
-```
-
-### 7.2 Convert local TinyFace / IJB data if already available
-
-If TinyFace and IJB data already exist locally under `/data/mj`, run:
-
-```bash
-bash shells/prepare_eval_pipeline.sh /data/mj cuda:0 256 4
-python tools/check_eval_ready.py --root /data/mj
-```
-
-This script no longer downloads anything. It only:
-
-- converts existing verification `.bin` files
-- preprocesses TinyFace if `/data/mj/TinyFace` exists
-- preprocesses IJB-C if `/data/mj/IJB_release` exists
-- preprocesses IJB-S aligned images if available
-
-Current evaluator coverage:
-
-- `lfw`
-- `agedb_30`
-- `cfp_fp`
-- `cplfw`
-- `calfw`
-
-TinyFace and IJB preprocessing utilities are included, but they are not part of the current pair-verification evaluator.
-
-## 8. Training
+## 5. Training
 
 The current training defaults are fixed in code:
 
@@ -277,7 +115,7 @@ Obtain that checkpoint from the official KPRPE repository and the resources link
 
 - https://github.com/mk-minchul/kprpe
 
-### 7.1 CASIA, KP-RPE small, without mixed precision
+### 5.1 CASIA, KP-RPE small, without mixed precision
 
 This command uses 2 GPUs and keeps the global batch size at `512`.
 
@@ -301,7 +139,7 @@ torchrun --nproc_per_node=2 --standalone train.py \
   --rpe_impl extension
 ```
 
-### 7.2 CASIA, KP-RPE small, BF16 with Accelerate + FSDP
+### 5.2 CASIA, KP-RPE small, BF16 with Accelerate + FSDP
 
 This command uses 2 GPUs and matches the effective global batch of the no-MP run above.
 
@@ -337,7 +175,7 @@ Each run stores:
 - `last/`
 - `train_state.r*.pt`
 
-### 7.3 Resume training
+### 5.3 Resume training
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 --standalone train.py \
@@ -363,9 +201,9 @@ Note:
 
 - `--n_epochs` is the total target epoch count, not “additional epochs”
 
-## 9. Evaluation
+## 6. Evaluation
 
-### 8.1 Evaluate one checkpoint
+### 6.1 Evaluate one checkpoint
 
 ```bash
 bash shells/eval_nompi_only.sh \
@@ -384,7 +222,7 @@ This wrapper:
 - exports the checkpoint to `model.exported.pt` if needed
 - runs verification evaluation on the requested datasets
 
-### 8.2 Compare mixed precision vs no mixed precision
+### 6.2 Compare mixed precision vs no mixed precision
 
 ```bash
 bash shells/eval_mp_vs_nompi.sh \
@@ -405,7 +243,7 @@ This wrapper:
 - evaluates both checkpoints sequentially
 - reuses exported models on later runs
 
-### 8.3 Re-train an MP checkpoint and compare immediately
+### 6.3 Re-train an MP checkpoint and compare immediately
 
 ```bash
 bash shells/retrain_mp_then_eval.sh \
@@ -421,7 +259,7 @@ This wrapper:
 - exports it
 - evaluates it against an existing no-MP checkpoint
 
-## 10. Checkpoint Caveat
+## 7. Checkpoint Caveat
 
 Old accelerator/FSDP checkpoints saved before the full-state save fix may not be evaluable from `model.pt` alone.
 
@@ -435,7 +273,7 @@ If that happens, do not use that checkpoint for final comparison. Re-train or re
 
 New accelerator checkpoints created with the current training code save the backbone through `accelerator.get_state_dict(...)`, which is the correct path for later export and evaluation.
 
-## 11. Manual Utilities
+## 8. Manual Utilities
 
 Check verification dataset readiness:
 
