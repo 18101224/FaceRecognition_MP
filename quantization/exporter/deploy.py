@@ -59,6 +59,10 @@ class QuantizedIR50Classifier(nn.Module):
 def _load_checkpoint_payload(checkpoint_path: str | Path) -> tuple[dict[str, Any], dict[str, Any]]:
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     state = ckpt.get("model_state_dict", ckpt)
+    state = {
+        key[len("module."):] if key.startswith("module.") else key: value
+        for key, value in state.items()
+    }
     params = dict(ckpt.get("model_params", {}))
     return state, params
 

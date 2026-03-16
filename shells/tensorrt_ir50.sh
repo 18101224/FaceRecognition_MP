@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-CKPT_PATH="${CKPT_PATH:-checkpoint/73c41da61-49bc-44f7-a8ac-7129bb49b694/best.pth}"
+CKPT_PATH="${CKPT_PATH:-checkpoint/raf-ir50/best_acc.pth}"
 QUANT_STATE="${QUANT_STATE:-checkpoint/ir50_w8a8_brecq_legacy_sweep.pth}"
 DATASET_NAME="${DATASET_NAME:-RAF-DB}"
 DATASET_PATH="${DATASET_PATH:-../data/RAF-DB_balanced}"

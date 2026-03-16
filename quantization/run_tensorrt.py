@@ -58,7 +58,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 
 def _require_module(name: str) -> None:
@@ -111,45 +110,21 @@ def _build_valid_loader(
     num_workers: int,
     img_size: int | None = None,
 ):
-    from torch.utils.data import DataLoader
-
-    from dataset import FER, CINIC10, CORe50, SmallNORB, get_multi_view_transforms
+    from quantization.data import build_fer_loader
     from quantization.exporter import load_ir50_model_params
 
-    ds_map = {
-        "RAF-DB": FER,
-        "AffectNet": FER,
-        "CAER": FER,
-        "CINIC10": CINIC10,
-        "CORe50": CORe50,
-        "SmallNORB": SmallNORB,
-    }
-
     params = load_ir50_model_params(checkpoint_path)
-    model_type = str(params.get("model_type", "ir50"))
     resolved_img_size = int(img_size or params.get("img_size", 224))
     num_classes = int(params.get("num_classes", 7))
 
-    ds_args = SimpleNamespace(
+    valid_loader = build_fer_loader(
         dataset_name=dataset_name,
         dataset_path=dataset_path,
-        img_size=resolved_img_size,
-        use_view=False,
-        pin_memory=False,
-    )
-    valid_transform = get_multi_view_transforms(ds_args, train=False, model_type=model_type)
-    valid_dataset = ds_map[dataset_name](
-        args=ds_args,
         train=False,
-        transform=valid_transform,
-        idx=False,
-    )
-    valid_loader = DataLoader(
-        valid_dataset,
         batch_size=batch_size,
-        shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
+        img_size=resolved_img_size,
+        shuffle=False,
     )
     return valid_loader, num_classes, resolved_img_size
 
@@ -873,9 +848,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_torch_p.add_argument("--checkpoint", required=True)
     eval_torch_p.add_argument("--variant", choices=("fp32", "brecq", "qdq_int8"), required=True)
     eval_torch_p.add_argument("--quant-state", default=None)
-    eval_torch_p.add_argument("--dataset-name",
-                              choices=("RAF-DB", "AffectNet", "CAER", "CINIC10", "CORe50", "SmallNORB"),
-                              required=True)
+    eval_torch_p.add_argument("--dataset-name", choices=("RAF-DB", "AffectNet", "CAER"), required=True)
     eval_torch_p.add_argument("--dataset-path", required=True)
     eval_torch_p.add_argument("--device", default="auto", help="auto | cuda | cpu")
     eval_torch_p.add_argument("--batch-size", type=int, default=128)
@@ -887,9 +860,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_trt_p.add_argument("--checkpoint", required=True,
                             help="Training checkpoint used to recover dataset/model metadata")
     eval_trt_p.add_argument("--engine", required=True)
-    eval_trt_p.add_argument("--dataset-name",
-                            choices=("RAF-DB", "AffectNet", "CAER", "CINIC10", "CORe50", "SmallNORB"),
-                            required=True)
+    eval_trt_p.add_argument("--dataset-name", choices=("RAF-DB", "AffectNet", "CAER"), required=True)
     eval_trt_p.add_argument("--dataset-path", required=True)
     eval_trt_p.add_argument("--batch-size", type=int, default=128)
     eval_trt_p.add_argument("--num-workers", type=int, default=0)

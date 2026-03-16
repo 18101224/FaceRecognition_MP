@@ -7,8 +7,9 @@ PROFILE="${BRECQ_PROFILE:-stable}"
 DATASET_NAME="${DATASET_NAME:-RAF-DB}"
 DATASET_PATH="${DATASET_PATH:-../data/RAF-DB_balanced}"
 MODEL_TYPE="${MODEL_TYPE:-ir50}"
-CKPT_PATH="${CKPT_PATH:-checkpoint/73c41da61-49bc-44f7-a8ac-7129bb49b694/best.pth}"
+CKPT_PATH="${CKPT_PATH:-checkpoint/raf-ir50/best_acc.pth}"
 NUM_WORKERS="${NUM_WORKERS:-16}"
+CALIB_RATIO="${CALIB_RATIO:-0.1}"
 
 case "${PROFILE}" in
     legacy)
@@ -17,7 +18,6 @@ case "${PROFILE}" in
         N_ITERS_DEFAULT=20000
         USE_FISHER_DEFAULT=1
         PRECOMPUTE_DEFAULT=1
-        CALIB_RATIO_DEFAULT=0.1
         LAM_DEFAULT=1e-2
         REG_REDUCTION_DEFAULT=sum
         OPT_TARGET_DEFAULT=both
@@ -32,7 +32,6 @@ case "${PROFILE}" in
         N_ITERS_DEFAULT=20000
         USE_FISHER_DEFAULT=1
         PRECOMPUTE_DEFAULT=1
-        CALIB_RATIO_DEFAULT=0.1
         LAM_DEFAULT=1e-4
         REG_REDUCTION_DEFAULT=mean
         OPT_TARGET_DEFAULT=both
@@ -52,7 +51,6 @@ A_BITS="${A_BITS:-${A_BITS_DEFAULT}}"
 N_ITERS="${N_ITERS:-${N_ITERS_DEFAULT}}"
 USE_FISHER="${USE_FISHER:-${USE_FISHER_DEFAULT}}"
 PRECOMPUTE="${PRECOMPUTE:-${PRECOMPUTE_DEFAULT}}"
-CALIB_RATIO="${CALIB_RATIO:-${CALIB_RATIO_DEFAULT}}"
 LAM="${LAM:-${LAM_DEFAULT}}"
 REG_REDUCTION="${REG_REDUCTION:-${REG_REDUCTION_DEFAULT}}"
 OPT_TARGET="${OPT_TARGET:-${OPT_TARGET_DEFAULT}}"
@@ -69,24 +67,23 @@ mkdir -p "${LOG_DIR}"
 echo "Saving log to ${LOG_FILE}"
 
 cmd=(
-    python FER_CL.py
-    --dataset_name "${DATASET_NAME}"
-    --dataset_path "${DATASET_PATH}"
-    --model_type "${MODEL_TYPE}"
-    --ckpt_path "${CKPT_PATH}"
-    --num_workers "${NUM_WORKERS}"
-    --quantize
-    --w_bits "${W_BITS}"
-    --a_bits "${A_BITS}"
-    --n_iters "${N_ITERS}"
+    python -m quantization.run_brecq
+    --checkpoint "${CKPT_PATH}"
+    --dataset-name "${DATASET_NAME}"
+    --dataset-path "${DATASET_PATH}"
+    --model-type "${MODEL_TYPE}"
+    --num-workers "${NUM_WORKERS}"
+    --w-bits "${W_BITS}"
+    --a-bits "${A_BITS}"
+    --n-iters "${N_ITERS}"
     --lam "${LAM}"
-    --reg_reduction "${REG_REDUCTION}"
-    --opt_target "${OPT_TARGET}"
-    --act_init_mode "${ACT_INIT_MODE}"
-    --act_init_percentile "${ACT_INIT_PERCENTILE}"
-    --act_init_samples "${ACT_INIT_SAMPLES}"
-    --calib_ratio "${CALIB_RATIO}"
-    --quant_output "${QUANT_OUTPUT}"
+    --reg-reduction "${REG_REDUCTION}"
+    --opt-target "${OPT_TARGET}"
+    --act-init-mode "${ACT_INIT_MODE}"
+    --act-init-percentile "${ACT_INIT_PERCENTILE}"
+    --act-init-samples "${ACT_INIT_SAMPLES}"
+    --calib-ratio "${CALIB_RATIO}"
+    --output "${QUANT_OUTPUT}"
 )
 
 if [[ "${USE_FISHER}" == "1" ]]; then

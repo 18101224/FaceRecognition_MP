@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.modules.ir50 import Backbone
+from ..backbone import Backbone
 
 
 class IR50FPModel(nn.Module):
@@ -36,7 +36,7 @@ class IR50FPModel(nn.Module):
     def __init__(
         self,
         num_classes: int = 7,
-        ir50_pretrain: str = "checkpoint/ir50.pth",
+        ir50_pretrain: str | None = None,
         img_size: int = 224,
         model_type: str = "ir50",
         **kwargs,
@@ -82,6 +82,10 @@ class IR50FPModel(nn.Module):
         """
         ckpt = torch.load(path, map_location="cpu", weights_only=False)
         state = ckpt.get("model_state_dict", ckpt)
+        state = {
+            (k[len("module."): ] if k.startswith("module.") else k): v
+            for k, v in state.items()
+        }
 
         # backbone
         backbone_sd = {
@@ -103,8 +107,9 @@ class IR50FPModel(nn.Module):
             print("[IR50FPModel] WARNING: no backbone.* keys in checkpoint")
 
         # classifier weight
-        if "weight" in state:
-            w = state["weight"]
+        weight_key = "weight" if "weight" in state else None
+        if weight_key is not None:
+            w = state[weight_key]
             if w.shape != self.weight.shape:
                 raise ValueError(
                     f"weight shape mismatch: ckpt {tuple(w.shape)} vs model {tuple(self.weight.shape)}"
