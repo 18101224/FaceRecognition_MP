@@ -21,6 +21,30 @@ This README reflects the current public-facing policy:
 - upstream checkpoints are not redistributed here
 - dataset access and usage permissions remain the user's responsibility
 
+## Benchmark Snapshot
+
+The figure below compares two KP-RPE small training runs on CASIA aligned:
+
+- `w.o. MP`: standard DDP, global batch `512`
+- `w/ MP`: BF16 mixed precision with `Accelerate + FSDP`, global batch `512`
+
+![Mixed precision vs no mixed precision benchmark](artifacts/mp_vs_nompi_comparison.png)
+
+Verification summary:
+
+| Metric | w.o. MP | w/ MP |
+| --- | ---: | ---: |
+| LFW | 99.1167 | 99.0000 |
+| AgeDB-30 | 92.7500 | 90.5833 |
+| CFP-FP | 95.5429 | 94.5857 |
+| CPLFW | 89.1000 | 88.2833 |
+| CALFW | 92.4000 | 91.6000 |
+| Mean | 93.7819 | 92.8105 |
+| Training runtime | 13h 00m | 8h 47m |
+| Training throughput | 560 img/s | 790 img/s |
+
+In this comparison, mixed precision reduced training runtime by `32.4%` and increased throughput to `1.41x`, while the no-mixed-precision run retained slightly higher verification accuracy.
+
 ## 1. Upstream Provenance
 
 The `models/` and `aligners/` packages in this repository are derived from the official KPRPE repository:
