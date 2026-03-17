@@ -74,28 +74,15 @@ export_checkpoint() {
   echo "visible_devices=${visible_devices}"
   echo "============================================================"
 
-  if [ "${use_accelerator}" = "true" ]; then
-    if [ -f "${exported_path}" ]; then
-      echo "[EXPORT] reuse existing ${exported_path}"
-    else
-      CUDA_VISIBLE_DEVICES="${visible_devices}" torchrun --nproc_per_node="${world_size}" --standalone \
-        "${ROOT_DIR}/tools/export_eval_model.py" \
-        --checkpoint_dir "${checkpoint_dir}" \
-        --checkpoint_tag "${CHECKPOINT_TAG}" \
-        --output_path "${exported_path}" \
-        --overwrite false
-    fi
+  if [ -f "${exported_path}" ]; then
+    echo "[EXPORT] reuse existing ${exported_path}"
   else
-    if [ -f "${exported_path}" ]; then
-      echo "[EXPORT] reuse existing ${exported_path}"
-    else
-      CUDA_VISIBLE_DEVICES="${visible_devices}" python "${ROOT_DIR}/tools/export_eval_model.py" \
-        --checkpoint_dir "${checkpoint_dir}" \
-        --checkpoint_tag "${CHECKPOINT_TAG}" \
-        --output_path "${exported_path}" \
-        --device "${device}" \
-        --overwrite false
-    fi
+    CUDA_VISIBLE_DEVICES="${visible_devices}" python "${ROOT_DIR}/tools/export_eval_model.py" \
+      --checkpoint_dir "${checkpoint_dir}" \
+      --checkpoint_tag "${CHECKPOINT_TAG}" \
+      --output_path "${exported_path}" \
+      --device "${device}" \
+      --overwrite false
   fi
   EXPORTED_MODEL_PATH="${exported_path}"
 }

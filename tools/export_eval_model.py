@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -101,6 +102,10 @@ def validate_checkpoint_state_dict(model_path: Path, runtime_args: argparse.Name
         )
 
 
+def is_main_process() -> bool:
+    return int(os.environ.get("RANK", "0")) == 0
+
+
 def export_single_process(model_path: Path, output_path: Path, runtime_args: argparse.Namespace, device: torch.device) -> None:
     model = get_model(runtime_args).to(device)
     state_dict = torch.load(model_path, map_location="cpu", weights_only=False)
@@ -159,20 +164,11 @@ def main():
         return
 
     runtime_args = build_runtime_args(checkpoint_args)
-    use_accelerator = bool(checkpoint_args.get("use_accelerator", False))
     validate_checkpoint_state_dict(model_path=model_path, runtime_args=runtime_args)
-
-    if use_accelerator:
-        export_accelerated(
-            model_path=model_path,
-            output_path=output_path,
-            runtime_args=runtime_args,
-            mixed_precision=str(checkpoint_args.get("mixed_precision", "no")),
-            expected_world_size=int(checkpoint_args.get("world_size", 1)),
-        )
+    if not is_main_process():
         return
 
-    device = torch.device(args.device) if args.device else torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device(args.device) if args.device else torch.device("cpu")
     export_single_process(model_path=model_path, output_path=output_path, runtime_args=runtime_args, device=device)
     print(f"[EXPORT] saved full model state_dict to {output_path}")
 
